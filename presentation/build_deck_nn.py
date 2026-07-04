@@ -26,6 +26,19 @@ prs = Presentation(TPL)
 S = list(prs.slides)
 
 
+def delete_shape(shape):
+    el = shape._element
+    el.getparent().remove(el)
+
+
+# картинки-заглушки шаблона на слайдах 3 и 4 заслоняют текст — убираем
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+for slide_idx in (2, 3):
+    for sh in list(S[slide_idx].shapes):
+        if sh.shape_type == MSO_SHAPE_TYPE.PICTURE:
+            delete_shape(sh)
+
+
 def set_text(shape, lines, size=18, color=GREY, bold=False, spacing=1.15):
     """Полностью переписывает text_frame шейпа (список строк или (текст, опции))."""
     tf = shape.text_frame
@@ -118,10 +131,15 @@ set_text(s.shapes[2], [
     "• Хранение — Kùzu (Cypher), ответы — GraphRAG с цитатами",
 ], size=13.5, color=GREY)
 
-# ============ S5 — МАСШТАБ (карточка с бейджами) ============
+# ============ S5 — МАСШТАБ ============
 s = S[4]
-set_text(s.shapes[1], [("МАСШТАБ НА ПОЛНОМ КОРПУСЕ", {"size": 36, "bold": True, "color": DARK})])
-set_text(s.shapes[2], [("4.7 ГБ архива кейса обработано полностью, без пропусков",
+# синие плашки-бейджи шаблона накладываются на заголовок — убираем их
+delete_shape(s.shapes[5])
+delete_shape(s.shapes[4])
+title_box = s.shapes[1]
+title_box.width = Inches(5.8)  # чтобы заголовок не тянулся под правый край карточки
+set_text(title_box, [("МАСШТАБ НА ПОЛНОМ КОРПУСЕ", {"size": 27, "bold": True, "color": DARK})])
+set_text(s.shapes[2], [("4.7 ГБ архива обработано полностью, без пропусков",
                         {"size": 16, "bold": True, "color": VIOLET})])
 set_text(s.shapes[3], [
     "2 090 документов (PDF/DOCX/PPTX/XLS + OCR сканов)   •   292 155 уникальных",
@@ -129,8 +147,6 @@ set_text(s.shapes[3], [
     "665 LLM-утверждений с дословными цитатами   •   3 000 рёбер противоречий",
     "34 эксперта   •   ответ на сложный запрос — 2–3 секунды",
 ], size=14, color=GREY)
-set_text(s.shapes[4], [("292 155", {"size": 13, "bold": True, "color": VIOLET})])
-set_text(s.shapes[5], [("2 090", {"size": 13, "bold": True, "color": VIOLET})])
 
 # ============ S6 — ДЕМО (две карточки) ============
 s = S[5]
