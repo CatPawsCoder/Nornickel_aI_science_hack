@@ -39,7 +39,8 @@ SCHEMA = [
     """CREATE NODE TABLE IF NOT EXISTS Condition(
         id STRING, param STRING, substance STRING, op STRING,
         value DOUBLE, value2 DOUBLE, unit STRING, quote STRING,
-        context STRING, doc_id STRING, verified BOOLEAN, PRIMARY KEY(id))""",
+        context STRING, doc_id STRING, verified BOOLEAN,
+        occurrences INT64, PRIMARY KEY(id))""",
     """CREATE NODE TABLE IF NOT EXISTS Claim(
         id STRING, text STRING, confidence STRING, doc_id STRING, year INT64,
         status STRING, superseded_by STRING, created_at STRING, PRIMARY KEY(id))""",

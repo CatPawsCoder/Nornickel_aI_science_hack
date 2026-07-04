@@ -74,19 +74,21 @@ def main():
     cond_rows, hascond_rows, aboutm_rows, aboutp_rows = [], [], [], []
     men_bucket = {"Material": men_m, "Process": men_p, "Equipment": men_e, "Facility": men_f}
     cond_i = 0
+    total_raw = 0
     nproc = max(2, (os.cpu_count() or 4) - 2)
-    print(f"spotting with {nproc} processes...", flush=True)
+    print(f"spotting with {nproc} processes (полный текст, без пропусков)...", flush=True)
     with Pool(nproc) as pool:
-        for k, res in enumerate(pool.imap_unordered(process_doc, tasks, chunksize=8)):
+        for k, res in enumerate(pool.imap_unordered(process_doc, tasks, chunksize=4)):
             did = res["doc_id"]
+            total_raw += res.get("n_raw", 0)
             for etype, cid, n in res["mentions"]:
                 men_bucket[etype].append([did, cid, n])
-            for (param, subst, op, v, v2, unit, quote, ctx, mcid, pcid) in res["conds"]:
+            for (param, subst, op, v, v2, unit, quote, ctx, mcid, pcid, occ) in res["conds"]:
                 cid_ = f"c{cond_i}"
                 # переносы строк ломают параллельный CSV-ридер Kùzu -> нормализуем в пробелы
                 quote = " ".join(quote.split())
                 ctx = " ".join(ctx.split())
-                cond_rows.append([cid_, param, subst, op, v, v2, unit, quote, ctx, did, True])
+                cond_rows.append([cid_, param, subst, op, v, v2, unit, quote, ctx, did, True, occ])
                 hascond_rows.append([did, cid_])
                 if mcid:
                     aboutm_rows.append([cid_, mcid])
@@ -94,7 +96,8 @@ def main():
                     aboutp_rows.append([cid_, pcid])
                 cond_i += 1
             if (k + 1) % 300 == 0:
-                print(f"  {k+1}/{len(tasks)}  conds={cond_i}  {time.time()-t0:.1f}s", flush=True)
+                print(f"  {k+1}/{len(tasks)}  uniq_conds={cond_i} raw={total_raw}  {time.time()-t0:.1f}s", flush=True)
+    print(f"дедуп: {total_raw} сырых фактов -> {cond_i} уникальных (0 потеряно, повторы в occurrences)", flush=True)
 
     for name, rows, rel in [("men_m", men_m, "MENTIONS"), ("men_p", men_p, "MENTIONS_P"),
                             ("men_e", men_e, "MENTIONS_E"), ("men_f", men_f, "MENTIONS_F")]:
@@ -104,7 +107,7 @@ def main():
     print(f"mentions COPY {time.time()-t0:.1f}s", flush=True)
 
     pc = w_csv("cond.csv", ["id", "param", "substance", "op", "value", "value2",
-                            "unit", "quote", "context", "doc_id", "verified"], cond_rows)
+                            "unit", "quote", "context", "doc_id", "verified", "occurrences"], cond_rows)
     conn.execute(f'COPY Condition FROM "{pc}" (HEADER=true, PARALLEL=false)')
     ph = w_csv("hascond.csv", ["from", "to"], hascond_rows)
     conn.execute(f'COPY HAS_CONDITION FROM "{ph}" (HEADER=true)')

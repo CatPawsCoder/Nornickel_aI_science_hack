@@ -237,7 +237,8 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                         r2["query_constraint"] = f"{want['param']} {want['op']} {want['value']}{'-' + str(want['value2']) if want.get('value2') else ''} {want['unit']}"
                         matched_conditions.append(r2)
 
-    # 5. claims из LLM-слоя по сущностям запроса
+    # 5. claims из LLM-слоя по сущностям запроса,
+    #    ранжирование по лексической близости к тексту вопроса
     claims = []
     if conn is not None and parsed["entities"]:
         seen = set()
@@ -254,6 +255,14 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 if r["id"] not in seen and passes(r["doc_id"]):
                     seen.add(r["id"])
                     claims.append(dict(r))
+        # скоринг: пересечение стем-токенов вопроса и текста утверждения;
+        # редкие слова (имена фабрик, процессов) весят больше частых
+        qtok = [t for t in set(tokenize(query)) if len(t) > 2]
+        for c in claims:
+            ctok = set(tokenize(c["text"]))
+            score = sum(min(len(t), 10) for t in qtok if t in ctok)
+            c["relevance"] = score
+        claims.sort(key=lambda c: -c["relevance"])
 
     top_chunk_texts = []
     for did in ranked[:6]:

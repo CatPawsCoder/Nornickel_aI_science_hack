@@ -24,9 +24,59 @@ def _fmt_constraint(f: dict) -> str:
     return f"{f['param']}{(' (' + f['substance'] + ')') if f.get('substance') else ''}: {val} {f['unit']}"
 
 
+import re as _re
+
+_NUM_RE = _re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def _numbers_of(text: str) -> set:
+    """Нормализованные числа из текста (для валидации ответа против цитат)."""
+    return {n.replace(",", ".").rstrip("0").rstrip(".") for n in _NUM_RE.findall(text)}
+
+
+def _direct_answer(question: str, claims: list, conds: list) -> str | None:
+    """Прямой ответ на вопрос строго из верифицированных фактов графа.
+
+    LLM получает ТОЛЬКО топ-релевантные утверждения и обязана отвечать по ним.
+    Валидация: каждое число в ответе LLM должно присутствовать в переданных
+    фактах — иначе откат на детерминированный ответ (топ-утверждение дословно).
+    """
+    top = [c for c in claims[:5] if c.get("relevance", 0) > 0] or claims[:3]
+    if not top and not conds:
+        return None
+    facts_blob = "\n".join(f"- {c['text']} [источник: {c['title'][:60]}, узел {c['id']}]"
+                           for c in top)
+    cond_blob = "\n".join(f"- {c['param']}: {c['op']} {c['value']:g} {c['unit']} "
+                          f"(цитата: «{c['quote']}»)" for c in conds[:5])
+    allowed_numbers = _numbers_of(facts_blob + " " + cond_blob)
+
+    llm_ans = llm.complete(
+        "Ты — ассистент карты знаний. Ответь на вопрос КРАТКО (2-4 предложения), "
+        "используя ИСКЛЮЧИТЕЛЬНО приведённые факты. Все числа бери дословно из фактов. "
+        "Если в фактах нет ответа — так и скажи. Не добавляй ничего от себя.",
+        f"Вопрос: {question}\n\nФакты из графа знаний:\n{facts_blob}\n{cond_blob}")
+    if llm_ans:
+        # верификация: числа ответа обязаны существовать в фактах
+        if _numbers_of(llm_ans) <= allowed_numbers:
+            return llm_ans.strip()
+    # детерминированный откат: самое релевантное утверждение дословно
+    if top:
+        c = top[0]
+        return (f"{c['text']}\n\n<sub>источник: *{c['title'][:80]}* ({c['year'] or 'н/д'}) · "
+                f"узел `{c['id']}`</sub>")
+    return None
+
+
 def synthesize(result: dict, docs_meta: dict) -> dict:
     p = result["parsed"]
     md = []
+
+    # --- 0. прямой ответ на вопрос (строго из графа, числа валидированы) ---
+    direct = _direct_answer(p["text"], result.get("claims", []), result.get("conditions", []))
+    if direct:
+        md.append("## ✅ Прямой ответ\n")
+        md.append(direct)
+        md.append("")
 
     # --- 1. интерпретация запроса (прозрачность для пользователя) ---
     md.append("## 🔍 Как система поняла запрос\n")
@@ -109,17 +159,7 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
             md.append(f"- {g}")
         md.append("")
 
-    intro = None
-    if pubs or claims:
-        llm_intro = llm.complete(
-            "Ты — ассистент карты знаний R&D. Напиши 2-3 предложения введения к структурированному "
-            "ответу. НЕ добавляй фактов и чисел, только обобщи тематику. Русский язык.",
-            f"Запрос: {p['text']}\nНайдено: {len(pubs)} источников, {len(claims)} утверждений, "
-            f"{len(conds)} численных условий.")
-        if llm_intro:
-            intro = llm_intro.strip()
-    header = (intro + "\n\n") if intro else ""
-    return {"markdown": header + "\n".join(md),
+    return {"markdown": "\n".join(md),
             "n_claims": len(claims), "n_conditions": len(conds),
             "n_publications": len(pubs), "disagreements": len(disagreements)}
 

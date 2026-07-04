@@ -5,8 +5,8 @@
 географией и временными диапазонами.
 
 **Масштаб на полном корпусе кейса:** 2 090 документов (PDF/DOCX/PPTX/XLS, RU+EN,
-включая OCR сканов на GPU), **181 047 числовых условий** (100% верифицированы
-string-match), 36 858 упоминаний сущностей, 233 LLM-утверждения, 27 экспертов.
+включая OCR сканов на GPU), **292 155 уникальных числовых условий** (411 576 сырых, дубли схлопнуты
+в occurrences; 100% верифицированы string-match), 39 098 упоминаний сущностей, 233 LLM-утверждения, 27 экспертов.
 Ответ на сложный запрос — 2–3 с. Три LLM-провайдера с автопереключением:
 YandexGPT → OpenRouter → GigaChat.
 
@@ -48,7 +48,7 @@ YandexGPT → OpenRouter → GigaChat.
    ▼
 нормализованный текст + метаданные (год, язык, гео)
    │
-   ├── numeric.py      — regex-грамматика: 181 000+ числовых условий, 100% string-match
+   ├── numeric.py      — regex-грамматика: 292 000+ числовых условий, 100% string-match
    ├── thesaurus.py    — канонизатор сущностей RU/EN (88 канонов, 400+ синонимов)
    └── LLM-экстракция  — claims/relations/experts по строгой JSON-схеме
                           (все цитаты повторно верифицируются string-match)
@@ -68,20 +68,28 @@ FastAPI + cytoscape.js — чат, живой граф, фильтры, карт
 ## Запуск
 
 ```bash
-pip install -r requirements.txt
-# положить документы в data/raw/obzory/, затем:
-python backend/ingest.py          # текст + метаданные
-python -c "import sys; sys.path.insert(0,'backend'); from numeric import *; ..."  # см. scripts/
-python backend/build_graph.py     # граф: сущности, упоминания, условия
-python backend/merge_extracted.py # LLM-слой: claims/relations/experts
+pip install -r requirements-core.txt   # ядро; для OCR сканов см. requirements.txt (GPU-torch)
+# 1) распаковать корпус кейса (4.7GB zip, вкл. вложенные архивы):
+python scripts/extract_corpus.py       # -> data/raw/full/
+# 2) ингест всех форматов (pdf/docx/pptx/xls/xlsx/doc):
+python backend/ingest_full.py          # -> data/cache/docs.jsonl + txt/
+python backend/ingest_ocr.py           # OCR сканов на GPU (easyocr, опционально)
+# 3) сборка графа (параллельно, полный текст, дедуп вместо потерь):
+python backend/build_graph_mp.py
+python backend/merge_extracted.py      # LLM-слой: claims/relations/experts
+# 4) проверка целостности и запуск:
+python scripts/verify_graph.py         # 6 проверок: полнота, рёбра, string-match...
 python -m uvicorn backend.app:app --port 8017
 # открыть http://127.0.0.1:8017
 ```
 
 `.env` (не в репозитории):
 ```
-YC_API_KEY=...      # ключ Yandex AI Studio
+YC_API_KEY=...            # ключ Yandex AI Studio (кейс)
 YC_FOLDER_ID=...
+OPENROUTER_API_KEY=...    # fallback-провайдер (опционально)
+GIGACHAT_AUTH_KEY=...     # fallback-провайдер (опционально, нужен certs/russiantrustedca.pem)
+LLM_ORDER=yandex,openrouter,gigachat   # порядок перебора провайдеров
 ```
 
 При недоступности LLM система работает в граф-режиме: детерминированный
