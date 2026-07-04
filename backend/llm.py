@@ -47,7 +47,9 @@ _EMB_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/textEmbedding"
 _SEARCH_URL = "https://searchapi.api.cloud.yandex.net/v2/web/searchAsync"
 _OPER_URL = "https://operation.api.cloud.yandex.net/operations/"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-_OPENROUTER_MODEL = "openai/gpt-4o-mini"
+# правила хакатона: проприетарные модели (OpenAI/Anthropic) запрещены,
+# только открытые веса -> DeepSeek (open-weights, MIT)
+_OPENROUTER_MODEL = ENV_MODEL = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
 _GIGA_OAUTH = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
 _GIGA_CHAT = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 # корневой сертификат НУЦ Минцифры (штатная проверка TLS Сбера)
@@ -155,8 +157,9 @@ def gigachat_available() -> bool:
     return _giga_get_token() is not None
 
 
-# Порядок провайдеров можно переопределить через LLM_ORDER=gigachat,openrouter,yandex
-_PROVIDER_ORDER = ENV.get("LLM_ORDER", "yandex,openrouter,gigachat").split(",")
+# Порядок провайдеров можно переопределить через LLM_ORDER.
+# По умолчанию: Yandex (кейс) -> GigaChat (РФ) -> OpenRouter (open-weights DeepSeek)
+_PROVIDER_ORDER = ENV.get("LLM_ORDER", "yandex,gigachat,openrouter").split(",")
 
 
 def complete(system: str, user: str, model: str = "yandexgpt",

@@ -26,6 +26,49 @@ import llm
 
 app = FastAPI(title="Научный клубок — карта знаний R&D")
 
+# ------------------------- аудит действий (требование ИБ из ТЗ) ---------------
+import datetime
+import time as _time
+
+from fastapi import Request
+
+AUDIT_LOG = os.path.join(ROOT, "data", "audit.log")
+
+
+@app.middleware("http")
+async def audit_middleware(request: Request, call_next):
+    t0 = _time.time()
+    body_preview = ""
+    if request.method == "POST" and request.url.path.startswith("/api/"):
+        body = await request.body()
+        body_preview = body.decode("utf-8", "ignore")[:200]
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        try:
+            rec = {
+                "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+                "ip": request.client.host if request.client else "?",
+                "method": request.method,
+                "path": request.url.path,
+                "query": body_preview,
+                "status": response.status_code,
+                "ms": round((_time.time() - t0) * 1000),
+            }
+            with open(AUDIT_LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:
+            pass  # аудит не должен ломать основную функциональность
+    return response
+
+
+@app.get("/api/audit")
+def api_audit(limit: int = 50):
+    """Последние записи аудита (в проде — только для роли администратора)."""
+    if not os.path.exists(AUDIT_LOG):
+        return {"records": []}
+    lines = open(AUDIT_LOG, encoding="utf-8").read().strip().splitlines()
+    return {"records": [json.loads(l) for l in lines[-limit:]]}
+
 conn = open_db(read_only=True)
 idx = load_index()
 DOCS = idx["docs"]

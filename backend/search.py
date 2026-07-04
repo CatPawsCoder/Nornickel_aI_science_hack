@@ -251,7 +251,17 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
             return False
         return True
 
-    ranked = [did for did in sorted(doc_score, key=lambda k: -doc_score[k]) if passes(did)]
+    # дедуп: один и тот же файл мог попасть в базу дважды (из «Обзоров» и из
+    # полного корпуса с hash-суффиксом) — оставляем более релевантный экземпляр
+    ranked, seen_titles = [], set()
+    for did in sorted(doc_score, key=lambda k: -doc_score[k]):
+        if not passes(did):
+            continue
+        base = re.sub(r"_[0-9a-f]{8}$", "", docs[did]["title"]).lower().strip()
+        if base in seen_titles:
+            continue
+        seen_titles.add(base)
+        ranked.append(did)
 
     # 4. числовые условия из графа, пересекающиеся с ограничениями запроса
     matched_conditions = []
@@ -277,10 +287,10 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                         r2["query_constraint"] = f"{want['param']} {want['op']} {want['value']}{'-' + str(want['value2']) if want.get('value2') else ''} {want['unit']}"
                         matched_conditions.append(r2)
 
-    # 5. claims из LLM-слоя по сущностям запроса,
-    #    ранжирование по лексической близости к тексту вопроса
+    # 5. claims из LLM-слоя: по сущностям запроса + лексический поиск по всем
+    #    утверждениям (термины вне тезауруса — HiPRO, SULFATEQ, названия установок)
     claims = []
-    if conn is not None and parsed["entities"]:
+    if conn is not None:
         seen = set()
         for e in parsed["entities"][:6]:
             rel = {"Material": "CLAIM_ABOUT_M", "Process": "CLAIM_ABOUT_P"}.get(e["type"])
@@ -295,12 +305,26 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 if r["id"] not in seen and passes(r["doc_id"]):
                     seen.add(r["id"])
                     claims.append(dict(r))
+        # лексический fallback: скан всех утверждений (их сотни — дёшево)
+        qtok_all = [t for t in set(tokenize(query)) if len(t) > 2]
+        if qtok_all:
+            rows = gq(conn,
+                "MATCH (pub:Publication)-[:STATES]->(cl:Claim) "
+                "RETURN cl.id AS id, cl.text AS text, cl.confidence AS confidence, "
+                "cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo")
+            for r in rows:
+                if r["id"] in seen or not passes(r["doc_id"]):
+                    continue
+                ctok = set(tokenize(r["text"]))
+                if sum(1 for t in qtok_all if t in ctok) >= 2 or any(
+                        len(t) >= 5 and t in ctok for t in qtok_all):
+                    seen.add(r["id"])
+                    claims.append(dict(r))
         # скоринг: пересечение стем-токенов вопроса и текста утверждения;
-        # редкие слова (имена фабрик, процессов) весят больше частых
-        qtok = [t for t in set(tokenize(query)) if len(t) > 2]
+        # редкие/длинные слова (имена установок, процессов) весят больше частых
         for c in claims:
             ctok = set(tokenize(c["text"]))
-            score = sum(min(len(t), 10) for t in qtok if t in ctok)
+            score = sum(min(len(t), 10) for t in qtok_all if t in ctok)
             c["relevance"] = score
         claims.sort(key=lambda c: -c["relevance"])
 
