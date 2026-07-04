@@ -135,6 +135,7 @@ GEO_F_Q = re.compile(
     r"миров(?:ая|ой|ом|ую|ых|ые)\b|"          # «мировая практика», «в мировой...»
     r"\bмира\b|\bв\s+мире\b|практик\w*\s+мира", re.I)
 LAST_N = re.compile(r"последни[ех]\s+(\d+)\s+лет", re.I)
+LAST_VAGUE = re.compile(r"последн\w{0,3}\s+(?:год\w{0,3}|лет)", re.I)  # «последних лет» -> 5
 SINCE_Y = re.compile(r"(?:с|после|начиная\s+с)\s+(20[0-2]\d|19[89]\d)\s*(?:года|г\.)?", re.I)
 RANGE_Y = re.compile(r"(20[0-2]\d|19[89]\d)\s*[-–—]\s*(20[0-2]\d|19[89]\d)")
 
@@ -156,6 +157,8 @@ def parse_query(query: str) -> dict:
     elif has_f:
         geo = "foreign"
     year_from = year_to = None
+    if LAST_VAGUE.search(query):
+        year_from = CURRENT_YEAR - 5   # «последних лет» трактуем как 5 лет
     m = LAST_N.search(query)
     if m:
         year_from = CURRENT_YEAR - int(m.group(1))
@@ -413,8 +416,33 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
             if c.get("cgeo") in ("ru", "foreign", "both"):
                 c["geo"] = c["cgeo"]
         collected.sort(key=lambda c: (-c["relevance"], c["id"]))  # стабильный порядок
+
+        def geo_ok(c) -> bool:
+            """Гео-фильтр на уровне УТВЕРЖДЕНИЯ: cgeo точнее geo документа
+            (документ-обзор бывает mixed, а конкретный факт — чисто ru)."""
+            want = parsed["geo"]
+            if want not in ("ru", "foreign"):
+                return True
+            cg = c.get("cgeo") or ""
+            if cg in ("ru", "foreign", "both"):
+                return cg in (want, "both")
+            d = docs.get(c["doc_id"]) or {}
+            return d.get("geo_hint") in (want, "mixed")
+
         for c in collected:
+            if not geo_ok(c):
+                continue
             (claims if in_period(c["doc_id"]) else claims_out).append(c)
+
+    # ключевые термины запроса, ОТСУТСТВУЮЩИЕ в базе утверждений
+    # («закачка», «закладка» и т.п.) — защита от подмены темы соседней
+    missing_intent = []
+    if conn is not None and qtok_all:
+        pool_text = " ".join(c["text"].lower() for c in (claims + claims_out))
+        pool_tok = set(tokenize(pool_text))
+        for t in qtok_all:
+            if len(t) >= 5 and t not in pool_tok:
+                missing_intent.append(t)
 
     # 6. эксперты по теме запроса: компетенции + авторство топ-документов
     experts = []
@@ -457,6 +485,7 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
         "claims": claims[:60],
         "claims_out_of_period": claims_out[:20],
         "experts": experts[:10],
+        "missing_intent": missing_intent,
         "chunks": top_chunk_texts[:top_chunks],
         "n_constraints": len(constraint_docsets),
         "strict_docs": sorted(strict_docs),

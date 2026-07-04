@@ -35,6 +35,26 @@ from fastapi import Request
 AUDIT_LOG = os.path.join(ROOT, "data", "audit.log")
 
 
+# простейший rate-limit: публичное демо не должно позволять выжигать LLM-квоты
+_RL: dict = {}
+_RL_MAX_PER_MIN = 15
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path in ("/api/query", "/api/monitor", "/api/export"):
+        ip = request.client.host if request.client else "?"
+        now = _time.time()
+        bucket = [t for t in _RL.get(ip, []) if now - t < 60]
+        if len(bucket) >= _RL_MAX_PER_MIN:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": "слишком много запросов, подождите минуту"},
+                                status_code=429)
+        bucket.append(now)
+        _RL[ip] = bucket
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def audit_middleware(request: Request, call_next):
     t0 = _time.time()
@@ -307,9 +327,13 @@ class MonitorQ(BaseModel):
 
 
 @app.post("/api/monitor")
-def api_monitor(body: MonitorQ):
-    items = llm.search_web(body.topic + " металлургия исследование")
-    return {"topic": body.topic, "found": items}
+def api_monitor(body: MonitorQ, request: Request):
+    # внешний поиск расходует квоты Search API — ограничиваем длину темы
+    topic = (body.topic or "").strip()[:120]
+    if len(topic) < 4:
+        return {"topic": topic, "found": [], "error": "тема слишком короткая"}
+    items = llm.search_web(topic + " металлургия исследование")
+    return {"topic": topic, "found": items}
 
 
 @app.get("/")

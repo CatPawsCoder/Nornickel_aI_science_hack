@@ -36,7 +36,8 @@ def _numbers_of(text: str) -> set:
 
 def _direct_answer(question: str, claims: list, conds: list,
                    claims_out: list | None = None, period_note: str = "",
-                   chunks: list | None = None, docs_meta: dict | None = None) -> str | None:
+                   chunks: list | None = None, docs_meta: dict | None = None,
+                   missing_intent: list | None = None, geo_mode: str = "") -> str | None:
     """Прямой ответ на вопрос строго из верифицированных фактов графа.
 
     LLM получает ТОЛЬКО топ-релевантные утверждения и обязана отвечать по ним.
@@ -46,17 +47,20 @@ def _direct_answer(question: str, claims: list, conds: list,
     Валидация: каждое число в ответе LLM должно присутствовать в переданных
     фактах — иначе откат на детерминированный ответ (топ-утверждение дословно).
     """
-    top_in = [c for c in claims[:5] if c.get("relevance", 0) > 0]
+    # для обзорных вопросов («литературный обзор», «обзор способов») берём больше фактов
+    is_review = bool(_re.search(r"обзор|литературн", question, _re.I))
+    k_in = 8 if is_review else 5
+    top_in = [c for c in claims[:k_in] if c.get("relevance", 0) > 0]
     top_out = [c for c in (claims_out or [])[:5] if c.get("relevance", 0) > 0]
     # если релевантные знания оказались вне периода — используем и их,
     # явно помечая год каждого факта (лучше честный ответ по 2018 г.,
     # чем пустое «информации нет»)
     best_in = top_in[0]["relevance"] if top_in else 0
     best_out = top_out[0]["relevance"] if top_out else 0
-    top = top_in[:5]
+    top = top_in[:k_in]
     out_used = False
     if top_out and (not top_in or best_out > best_in):
-        top = (top_out[:3] + top_in[:3])[:6]
+        top = (top_out[:3] + top_in[:5])[:8 if is_review else 6]
         out_used = True
     if not top:
         top = claims[:3]
@@ -73,9 +77,11 @@ def _direct_answer(question: str, claims: list, conds: list,
     if not top and not conds and not chunk_blob:
         return None
 
+    GEO_TAG = {"ru": "РФ", "foreign": "МИР", "both": "РФ+МИР", "mixed": "РФ+МИР"}
     facts_blob = "\n".join(
-        f"- ({c['year'] or 'н/д'}{', ВНЕ запрошенного периода' if out_used and c in top_out else ''}) "
-        f"{c['text']} [источник: {c['title'][:60]}, узел {c['id']}]" for c in top)
+        f"- ({c['year'] or 'н/д'}, {GEO_TAG.get(c.get('geo') or '', '—')}"
+        f"{', ВНЕ запрошенного периода' if out_used and c in top_out else ''}) "
+        f"{c['text']} [узел {c['id']}]" for c in top)
     cond_blob = "\n".join(f"- {c['param']}: {c['op']} {c['value']:g} {c['unit']} "
                           f"(цитата: «{c['quote']}»)" for c in conds[:5])
     allowed_numbers = _numbers_of(facts_blob + " " + cond_blob + " " + chunk_blob)
@@ -87,16 +93,29 @@ def _direct_answer(question: str, claims: list, conds: list,
         prefix = (f"⚠️ В корпусе нет публикаций по теме {period_note}; "
                   f"ближайшие данные — {span} гг.:\n\n")
 
+    intent_note = ""
+    if missing_intent:
+        terms = ", ".join(f"«{t}»" for t in missing_intent[:4])
+        intent_note = (f" ВАЖНО: по ключевым терминам вопроса ({terms}) в базе знаний НЕТ "
+                       f"утверждений — первой фразой прямо скажи об этом и не выдавай смежные "
+                       f"темы за ответ; смежное можно упомянуть отдельно и явно как смежное.")
+    compare_note = ""
+    if geo_mode == "compare":
+        compare_note = (" Вопрос сравнивает отечественную и зарубежную практику: структурируй "
+                        "ответ блоками «Отечественная практика:» и «Зарубежная практика:» "
+                        "по пометкам РФ/МИР у фактов; если по одной из географий данных нет — скажи это.")
     llm_ans = llm.complete(
-        "Ты — ассистент карты знаний. Ответь на вопрос СЖАТО (3-6 предложений), "
+        "Ты — ассистент карты знаний. Ответь на вопрос СЖАТО (3-6 предложений; для обзора — до 8), "
         "используя ИСКЛЮЧИТЕЛЬНО приведённые факты/фрагменты. Все числа бери дословно. "
         "Правила: (1) для обзорных вопросов сгруппируй решения по типам, а не перечисляй "
         "факты подряд; (2) численные значения в разных масштабах/единицах (л/ч на ячейку, "
         "м³/ч на контур, м³/мин на ванну) НЕ сравнивай напрямую — укажи масштаб каждого; "
         "(3) для фактов с пометкой «ВНЕ запрошенного периода» укажи их год; (4) год факта — "
         "это год публикации источника, а не год события; (5) если каких-то аспектов вопроса "
-        "в данных нет (например, экономических показателей) — явно скажи, чего не хватает. "
-        "Не добавляй ничего от себя.",
+        "в данных нет (например, экономических показателей) — явно скажи, чего не хватает; "
+        "(6) каждое утверждение с числом заканчивай ссылкой вида [узел <id>] из соответствующего факта."
+        + intent_note + compare_note +
+        " Не добавляй ничего от себя.",
         f"Вопрос: {question}\n\nФакты из графа знаний:\n{facts_blob}\n{cond_blob}\n{chunk_blob}",
         temperature=0.0)
     if llm_ans:
@@ -144,7 +163,9 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
     direct = _direct_answer(p["text"], result.get("claims", []), result.get("conditions", []),
                             claims_out=result.get("claims_out_of_period"),
                             period_note=period_note,
-                            chunks=result.get("chunks"), docs_meta=docs_meta)
+                            chunks=result.get("chunks"), docs_meta=docs_meta,
+                            missing_intent=result.get("missing_intent"),
+                            geo_mode=p.get("geo") or "")
     if direct:
         md.append("## ✅ Прямой ответ\n")
         md.append(direct)
@@ -178,15 +199,21 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
     md.append("")
 
     # --- 2. подтверждённые утверждения (Claims из графа) ---
-    claims = result.get("claims", [])
+    # срез шума: показываем только релевантные вопросу (порог — 30% от лучшего
+    # и не менее 8 очков), максимум 12; остальные кандидаты не засоряют ответ
+    claims_all = result.get("claims", [])
+    best_rel = claims_all[0].get("relevance", 0) if claims_all else 0
+    thr = max(8.0, best_rel * 0.3)
+    claims = [c for c in claims_all if c.get("relevance", 0) >= thr][:12] or claims_all[:8]
+    n_hidden = len(claims_all) - len(claims)
     if claims:
         md.append("## 📌 Выводы из базы знаний\n")
         by_conf = {"high": [], "medium": [], "low": []}
         for c in claims:
             by_conf.setdefault(c.get("confidence", "medium"), by_conf["medium"]).append(c)
         n_sources = len({c["doc_id"] for c in claims})
-        md.append(f"*{len(claims)} утверждений-кандидатов из {n_sources} источников, "
-                  f"ранжированы по релевантности (прямой ответ опирается на верхние); "
+        hid = f" (ещё {n_hidden} менее релевантных скрыто)" if n_hidden > 0 else ""
+        md.append(f"*Топ-{len(claims)} утверждений из {n_sources} источников{hid}; "
                   f"каждое — узел графа с дословной цитатой.*\n")
         for conf in ("high", "medium", "low"):
             for c in by_conf[conf][:12]:
