@@ -11,3 +11,4 @@ data/server.log
 data/ingest.log
 *.log
 presentation/*.pdf
+tools/

@@ -1,0 +1,21 @@
+services:
+  klubok:
+    build: .
+    ports:
+      - "8017:8017"
+    environment:
+      # прямая ссылка на предсобранные данные (граф + индекс), см. SUBMISSION.md
+      DATA_BUNDLE_URL: "${DATA_BUNDLE_URL:-}"
+      # LLM-провайдеры опциональны: без ключей система работает в граф-режиме
+      # (детерминированный поиск + шаблонный синтез, все факты сохраняются)
+      YC_API_KEY: "${YC_API_KEY:-}"
+      YC_FOLDER_ID: "${YC_FOLDER_ID:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      GIGACHAT_AUTH_KEY: "${GIGACHAT_AUTH_KEY:-}"
+      LLM_ORDER: "${LLM_ORDER:-yandex,openrouter,gigachat}"
+    volumes:
+      - klubok-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  klubok-data:

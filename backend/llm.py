@@ -30,7 +30,9 @@ def _load_env() -> dict:
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 env[k] = v
-    env.update({k: v for k, v in os.environ.items() if k.startswith("YC_")})
+    env.update({k: v for k, v in os.environ.items()
+                if k.startswith("YC_") or k in
+                ("OPENROUTER_API_KEY", "GIGACHAT_AUTH_KEY", "GIGACHAT_SCOPE", "LLM_ORDER")})
     return env
 
 ENV = _load_env()
