@@ -45,7 +45,7 @@ def parse_entity_ref(ref: str) -> tuple[str, str] | None:
 def main() -> None:
     conn = open_db()
     # миграция схемы для уже существующей базы (свежая создаётся сразу с колонками)
-    for col, ctype in (("quote", "STRING"), ("verified", "BOOLEAN")):
+    for col, ctype in (("quote", "STRING"), ("verified", "BOOLEAN"), ("geo", "STRING")):
         try:
             conn.execute(f"ALTER TABLE Claim ADD {col} {ctype}")
         except Exception:
@@ -83,10 +83,11 @@ def main() -> None:
             conn.execute(
                 "MERGE (c:Claim {id:$id}) SET c.text=$t, c.confidence=$conf, "
                 "c.doc_id=$d, c.year=$y, c.status=$st, c.superseded_by='', c.created_at=$now, "
-                "c.quote=$q, c.verified=$v",
+                "c.quote=$q, c.verified=$v, c.geo=$g",
                 {"id": cl["id"], "t": cl["text"], "conf": conf, "d": doc_id,
                  "y": d["year"] or 0, "st": "active" if verified else "unverified_quote",
-                 "now": now, "q": (cl.get("quote") or "")[:300], "v": verified})
+                 "now": now, "q": (cl.get("quote") or "")[:300], "v": verified,
+                 "g": cl.get("geo", "") if cl.get("geo") in ("ru", "foreign", "both") else ""})
             # versioning-lite: то же утверждение под другим id -> старое помечаем superseded
             key = norm_space(cl["text"]).lower()[:150]
             old_id = existing.get(doc_id, {}).get(key)

@@ -130,7 +130,10 @@ def load_index() -> dict:
 
 # ---------------------------------------------------------------- query parse
 GEO_RU_Q = re.compile(r"отечествен|росси|в\s+россии|российск", re.I)
-GEO_F_Q = re.compile(r"зарубеж|мирово[йм]\s+практик|за\s+рубежом|иностранн|международн", re.I)
+GEO_F_Q = re.compile(
+    r"зарубеж|за\s+рубежом|иностранн|международн|"
+    r"миров(?:ая|ой|ом|ую|ых|ые)\b|"          # «мировая практика», «в мировой...»
+    r"\bмира\b|\bв\s+мире\b|практик\w*\s+мира", re.I)
 LAST_N = re.compile(r"последни[ех]\s+(\d+)\s+лет", re.I)
 SINCE_Y = re.compile(r"(?:с|после|начиная\s+с)\s+(20[0-2]\d|19[89]\d)\s*(?:года|г\.)?", re.I)
 RANGE_Y = re.compile(r"(20[0-2]\d|19[89]\d)\s*[-–—]\s*(20[0-2]\d|19[89]\d)")
@@ -355,13 +358,15 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 f"MATCH (pub:Publication)-[:STATES]->(cl:Claim)-[:{rel}]->(x:{e['type']} {{id:$id}}) "
                 f"WHERE cl.status = 'active' "
                 f"RETURN cl.id AS id, cl.text AS text, cl.confidence AS confidence, "
-                f"cl.quote AS quote, "
+                f"cl.quote AS quote, cl.geo AS cgeo, "
                 f"cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo "
-                f"LIMIT 100", {"id": e["id"]})
+                f"ORDER BY cl.id LIMIT 100", {"id": e["id"]})
             for r in rows:
                 if r["id"] not in seen and passes_geo(r["doc_id"]):
                     seen.add(r["id"])
-                    collected.append(dict(r))
+                    rec = dict(r)
+                    rec["entity_hit"] = True   # найден через сущность запроса
+                    collected.append(rec)
         # лексический fallback: скан всех утверждений (их сотни — дёшево)
         qtok_all = [t for t in set(tokenize(query)) if len(t) > 2 and t not in STOPWORDS]
         if qtok_all:
@@ -369,8 +374,9 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 "MATCH (pub:Publication)-[:STATES]->(cl:Claim) "
                 "WHERE cl.status = 'active' "
                 "RETURN cl.id AS id, cl.text AS text, cl.confidence AS confidence, "
-                "cl.quote AS quote, "
-                "cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo")
+                "cl.quote AS quote, cl.geo AS cgeo, "
+                "cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo "
+                "ORDER BY cl.id")
             for r in rows:
                 if r["id"] in seen or not passes_geo(r["doc_id"]):
                     continue
@@ -379,12 +385,34 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                         len(t) >= 5 and t in ctok for t in qtok_all):
                     seen.add(r["id"])
                     collected.append(dict(r))
-        # скоринг: пересечение стем-токенов вопроса и текста утверждения;
-        # редкие/длинные слова (имена установок, процессов) весят больше частых
-        for c in collected:
-            ctok = set(tokenize(c["text"]))
-            c["relevance"] = sum(min(len(t), 10) for t in qtok_all if t in ctok)
-        collected.sort(key=lambda c: -c["relevance"])
+        # скоринг: пересечение стем-токенов вопроса и текста утверждения.
+        # Вес токена = длина * idf-бонус: редкие в пуле термины («гипс»,
+        # «свинцов») важнее вездесущих («переработк», «способ»)
+        tok_sets = [(c, set(tokenize(c["text"]))) for c in collected]
+        df = {}
+        for t in qtok_all:
+            df[t] = sum(1 for _, ctok in tok_sets if t in ctok)
+        n_pool = max(1, len(tok_sets))
+        for c, ctok in tok_sets:
+            score = 0.0
+            for t in qtok_all:
+                if t in ctok:
+                    rarity = 3.0 if df[t] <= max(2, n_pool // 20) else (
+                        2.0 if df[t] <= n_pool // 5 else 1.0)
+                    score += min(len(t), 10) * rarity
+            # семантический буст: связь с сущностью запроса весомее лексики
+            if c.get("entity_hit"):
+                score += 25.0
+            # редкий термин запроса в ЗАГОЛОВКЕ источника — профильный документ
+            ttok = set(tokenize(c.get("title", "")))
+            if any(t in ttok for t in qtok_all
+                   if len(t) >= 5 and df.get(t, 99) <= max(2, n_pool // 20)):
+                score += 15.0
+            c["relevance"] = round(score, 1)
+            # гео самого утверждения точнее гео документа (документ бывает mixed)
+            if c.get("cgeo") in ("ru", "foreign", "both"):
+                c["geo"] = c["cgeo"]
+        collected.sort(key=lambda c: (-c["relevance"], c["id"]))  # стабильный порядок
         for c in collected:
             (claims if in_period(c["doc_id"]) else claims_out).append(c)
 
@@ -404,10 +432,11 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 if r["id"] not in seen_e:
                     seen_e.add(r["id"])
                     experts.append({**dict(r), "via": f"эксперт в: {name_of(e['type'], e['id'])}"})
-        for did in ranked[:5]:
+        for did in ranked[:8]:
             rows = gq(conn,
                 "MATCH (x:Expert)-[:AUTHORED]->(p:Publication {id:$id}) "
-                "RETURN DISTINCT x.id AS id, x.name AS name, x.affiliation AS aff", {"id": did})
+                "RETURN DISTINCT x.id AS id, x.name AS name, x.affiliation AS aff "
+                "ORDER BY id", {"id": did})
             for r in rows:
                 if r["id"] not in seen_e:
                     seen_e.add(r["id"])

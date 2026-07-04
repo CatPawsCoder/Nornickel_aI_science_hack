@@ -71,8 +71,10 @@ MATERIALS = {
                       "syn": ["Li", "лития", "lithium"]},
     "arsenic":       {"name": "мышьяк", "en": "arsenic", "kind": "impurity",
                       "syn": ["As", "мышьяка", "arsenic"]},
-    "lead":          {"name": "свинец", "en": "lead", "kind": "impurity",
-                      "syn": ["Pb", "свинца", "lead"]},
+    "lead":          {"name": "свинец", "en": "lead", "kind": "metal",
+                      "syn": ["Pb", "свинца", "свинцов", "свинцово-цинков", "lead"]},
+    "zinc":          {"name": "цинк", "en": "zinc", "kind": "metal",
+                      "syn": ["Zn", "цинка", "цинков", "zinc"]},
     "coal_waste":    {"name": "угольные отходы", "en": "coal waste", "kind": "waste",
                       "syn": ["угольных отходов", "угольные шламы", "coal waste"]},
 }

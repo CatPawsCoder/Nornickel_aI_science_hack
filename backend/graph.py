@@ -44,7 +44,7 @@ SCHEMA = [
     """CREATE NODE TABLE IF NOT EXISTS Claim(
         id STRING, text STRING, confidence STRING, doc_id STRING, year INT64,
         status STRING, superseded_by STRING, created_at STRING,
-        quote STRING, verified BOOLEAN, PRIMARY KEY(id))""",
+        quote STRING, verified BOOLEAN, geo STRING, PRIMARY KEY(id))""",
     """CREATE NODE TABLE IF NOT EXISTS Expert(
         id STRING, name STRING, affiliation STRING, PRIMARY KEY(id))""",
     # --- рёбра ---

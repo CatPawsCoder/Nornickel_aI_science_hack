@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Прогон 10 вопросов от экспертов кейса (выданы организаторами) на живом демо."""
+"""Прогон 10 вопросов от экспертов кейса (выданы организаторами) на живом демо.
+
+ВНИМАНИЕ: это smoke-прогон (доступность/латентность/полнота секций),
+а НЕ автоматическая оценка качества ответов — качество обзорных ответов
+оценивается человеком по полному тексту (печатается ниже)."""
 import json
 import sys
 import time
@@ -32,10 +36,10 @@ for i, (tag, q) in enumerate(QUESTIONS, 1):
         a = r["answer"]
         md = a["markdown"]
         direct = md.split("##")[1].replace("✅ Прямой ответ", "").strip() if "Прямой ответ" in md else "(нет прямого ответа)"
-        direct_one = " ".join(direct.split())[:170]
-        empty = "нет информации" in direct.lower() or "не упоминаются" in direct.lower() or "отсутству" in direct.lower()[:120]
-        mark = "⚠️ " if empty else "✅"
-        print(f"{mark} [{i:2d}] {tag:24s} {time.time()-t0:4.1f}s pubs={a['n_publications']:2d} conds={a['n_conditions']:3d} claims={a['n_claims']:2d} эксп={'да' if 'Эксперты' in md else '—'}")
-        print(f"        → {direct_one}")
+        print(f"[{i:2d}] {tag:24s} {time.time()-t0:4.1f}s pubs={a['n_publications']:2d} "
+              f"conds={a['n_conditions']:3d} claims={a['n_claims']:2d} "
+              f"эксп={'да' if 'Эксперты' in md else '—'} гео={r['result']['parsed'].get('geo')}")
+        print("     " + " ".join(direct.split())[:400])
+        print()
     except Exception as e:
         print(f"❌ [{i:2d}] {tag}: {repr(e)[:90]}")
