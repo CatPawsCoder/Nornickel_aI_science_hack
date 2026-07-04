@@ -12,9 +12,11 @@ Yandex Search API у ключа РАБОТАЕТ — используется д
 """
 import json
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
+import uuid
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,6 +37,8 @@ ENV = _load_env()
 API_KEY = ENV.get("YC_API_KEY", "")
 FOLDER = ENV.get("YC_FOLDER_ID", "")
 OPENROUTER_KEY = ENV.get("OPENROUTER_API_KEY", "").strip('"').strip("'")
+GIGACHAT_AUTH = ENV.get("GIGACHAT_AUTH_KEY", "").strip('"').strip("'")
+GIGACHAT_SCOPE = ENV.get("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
 
 _LLM_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 _EMB_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/textEmbedding"
@@ -42,6 +46,13 @@ _SEARCH_URL = "https://searchapi.api.cloud.yandex.net/v2/web/searchAsync"
 _OPER_URL = "https://operation.api.cloud.yandex.net/operations/"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _OPENROUTER_MODEL = "openai/gpt-4o-mini"
+_GIGA_OAUTH = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+_GIGA_CHAT = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
+# корневой сертификат НУЦ Минцифры (штатная проверка TLS Сбера)
+_GIGA_CA = os.path.join(ROOT, "certs", "russiantrustedca.pem")
+_giga_ctx = ssl.create_default_context(cafile=_GIGA_CA) if os.path.exists(_GIGA_CA) else None
+_giga_token = None
+_giga_token_exp = 0.0
 
 _available: bool | None = None
 _last_probe = 0.0
@@ -95,28 +106,85 @@ def _openrouter_complete(system: str, user: str, temperature: float, max_tokens:
         return None
 
 
+def _giga_get_token() -> str | None:
+    global _giga_token, _giga_token_exp
+    if not GIGACHAT_AUTH or _giga_ctx is None:
+        return None
+    if _giga_token and time.time() < _giga_token_exp - 60:
+        return _giga_token
+    try:
+        req = urllib.request.Request(
+            _GIGA_OAUTH, data=f"scope={GIGACHAT_SCOPE}".encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "Accept": "application/json", "RqUID": str(uuid.uuid4()),
+                     "Authorization": f"Basic {GIGACHAT_AUTH}"})
+        r = json.loads(urllib.request.urlopen(req, context=_giga_ctx, timeout=30).read())
+        _giga_token = r["access_token"]
+        _giga_token_exp = r.get("expires_at", 0) / 1000 or (time.time() + 1500)
+        return _giga_token
+    except Exception:
+        return None
+
+
+def _gigachat_complete(system: str, user: str, temperature: float, max_tokens: int) -> str | None:
+    tok = _giga_get_token()
+    if not tok:
+        return None
+    try:
+        req = urllib.request.Request(
+            _GIGA_CHAT,
+            data=json.dumps({
+                "model": "GigaChat",
+                "temperature": max(temperature, 0.01),
+                "max_tokens": max_tokens,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ]}).encode(),
+            headers={"Content-Type": "application/json", "Accept": "application/json",
+                     "Authorization": f"Bearer {tok}"})
+        r = json.loads(urllib.request.urlopen(req, context=_giga_ctx, timeout=60).read())
+        return r["choices"][0]["message"]["content"]
+    except Exception:
+        return None
+
+
+def gigachat_available() -> bool:
+    return _giga_get_token() is not None
+
+
+# Порядок провайдеров можно переопределить через LLM_ORDER=gigachat,openrouter,yandex
+_PROVIDER_ORDER = ENV.get("LLM_ORDER", "yandex,openrouter,gigachat").split(",")
+
+
 def complete(system: str, user: str, model: str = "yandexgpt",
              temperature: float = 0.1, max_tokens: int = 4000) -> str | None:
     """Возвращает текст или None, если ни один провайдер не доступен (офлайн-режим).
-    Порядок: YandexGPT (ключ кейса) -> OpenRouter (fallback) -> None."""
+    Порядок по умолчанию: YandexGPT -> OpenRouter -> GigaChat (все на резерве друг у друга)."""
     global _active_provider
-    if yandex_available():
-        try:
-            r = _post(_LLM_URL, {
-                "modelUri": f"gpt://{FOLDER}/{model}/latest",
-                "completionOptions": {"temperature": temperature, "maxTokens": max_tokens},
-                "messages": [
-                    {"role": "system", "text": system},
-                    {"role": "user", "text": user},
-                ]})
-            _active_provider = "yandex"
-            return r["result"]["alternatives"][0]["message"]["text"]
-        except Exception:
-            pass
-    text = _openrouter_complete(system, user, temperature, max_tokens)
-    if text is not None:
-        _active_provider = "openrouter"
-        return text
+    for prov in _PROVIDER_ORDER:
+        prov = prov.strip()
+        if prov == "yandex" and yandex_available():
+            try:
+                r = _post(_LLM_URL, {
+                    "modelUri": f"gpt://{FOLDER}/{model}/latest",
+                    "completionOptions": {"temperature": temperature, "maxTokens": max_tokens},
+                    "messages": [{"role": "system", "text": system},
+                                 {"role": "user", "text": user}]})
+                _active_provider = "yandex"
+                return r["result"]["alternatives"][0]["message"]["text"]
+            except Exception:
+                continue
+        if prov == "openrouter":
+            text = _openrouter_complete(system, user, temperature, max_tokens)
+            if text is not None:
+                _active_provider = "openrouter"
+                return text
+        if prov == "gigachat":
+            text = _gigachat_complete(system, user, temperature, max_tokens)
+            if text is not None:
+                _active_provider = "gigachat"
+                return text
     _active_provider = "none"
     return None
 
@@ -126,7 +194,7 @@ def active_provider() -> str:
 
 
 def any_llm_available() -> bool:
-    return yandex_available() or bool(OPENROUTER_KEY)
+    return yandex_available() or bool(OPENROUTER_KEY) or bool(GIGACHAT_AUTH and _giga_ctx)
 
 
 def embed(text: str, kind: str = "doc") -> list[float] | None:

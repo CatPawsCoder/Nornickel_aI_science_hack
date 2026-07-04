@@ -1,0 +1,14 @@
+# Ядро (без OCR): ингест, граф, поиск, API
+fastapi==0.139.0
+uvicorn==0.50.0
+pydantic==2.13.4
+kuzu==0.11.3
+rank-bm25==0.2.2
+pymupdf==1.28.0
+python-docx==1.2.0
+openpyxl==3.1.5
+xlrd==2.0.2
+langdetect==1.0.9
+truststore==0.10.4
+# OCR сканов (опционально, нужен GPU-torch) — см. requirements.txt:
+#   easyocr, torch, torchvision, numpy
