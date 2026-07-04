@@ -385,12 +385,22 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 f"cl.quote AS quote, cl.geo AS cgeo, "
                 f"cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo "
                 f"ORDER BY cl.id LIMIT 100", {"id": e["id"]})
+            # буст по СПЕЦИФИЧНОСТИ сущности: редкая сущность («католит»,
+            # 6 утверждений) — сильный сигнал; массовая («никель», сотня) —
+            # слабый, иначе специфичные решения тонут в генерик-клеймах
+            ent_boost = 25.0 * min(1.0, 8.0 / max(1, len(rows)))
             for r in rows:
-                if r["id"] not in seen and passes_geo(r["doc_id"]):
-                    seen.add(r["id"])
-                    rec = dict(r)
-                    rec["entity_hit"] = True   # найден через сущность запроса
-                    collected.append(rec)
+                if passes_geo(r["doc_id"]):
+                    if r["id"] not in seen:
+                        seen.add(r["id"])
+                        rec = dict(r)
+                        rec["entity_boost"] = ent_boost
+                        collected.append(rec)
+                    else:
+                        for rec in collected:
+                            if rec["id"] == r["id"]:
+                                rec["entity_boost"] = max(rec.get("entity_boost", 0), ent_boost)
+                                break
         # лексический fallback: скан всех утверждений (их сотни — дёшево)
         qtok_all = [t for t in set(tokenize(query)) if len(t) > 2 and t not in STOPWORDS]
         if qtok_all:
@@ -419,14 +429,17 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
         n_pool = max(1, len(tok_sets))
         for c, ctok in tok_sets:
             score = 0.0
+            text_low = c["text"].lower()
             for t in qtok_all:
+                rarity = 3.0 if df[t] <= max(2, n_pool // 20) else (
+                    2.0 if df[t] <= n_pool // 5 else 1.0)
                 if t in ctok:
-                    rarity = 3.0 if df[t] <= max(2, n_pool // 20) else (
-                        2.0 if df[t] <= n_pool // 5 else 1.0)
                     score += min(len(t), 10) * rarity
-            # семантический буст: связь с сущностью запроса весомее лексики
-            if c.get("entity_hit"):
-                score += 25.0
+                elif len(t) >= 7 and t in text_low:
+                    # подстрочный матч длинных корней: «циркуляц» ⊂ «рециркуляции»
+                    score += min(len(t), 10) * rarity * 0.8
+            # семантический буст по специфичности сущности (см. ent_boost выше)
+            score += c.get("entity_boost", 0.0)
             # редкий термин запроса в ЗАГОЛОВКЕ источника — профильный документ
             ttok = set(tokenize(c.get("title", "")))
             if any(t in ttok for t in qtok_all
