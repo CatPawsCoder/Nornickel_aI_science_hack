@@ -18,13 +18,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "ontology"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from rank_bm25 import BM25Okapi
-
 from numeric import extract_numeric_facts
 from thesaurus import build_matcher, spot, MATERIALS, PROCESSES, EQUIPMENT, FACILITIES
 
 CACHE = os.path.join(ROOT, "data", "cache")
 INDEX_P = os.path.join(CACHE, "bm25.pkl")
+FTS_P = os.path.join(CACHE, "fts.db")
+# лайт-режим (VPS с малой RAM): дисковый SQLite FTS5 вместо pickle-индекса в памяти
+LIGHT = os.environ.get("KLUBOK_LIGHT") == "1" or (
+    not os.path.exists(INDEX_P) and os.path.exists(FTS_P))
 
 CURRENT_YEAR = 2026
 
@@ -48,7 +50,37 @@ def tokenize(text: str) -> list[str]:
     return [_stem(w.lower()) for w in _WORD.findall(text)]
 
 
+def _load_docs() -> dict:
+    docs = [json.loads(l) for l in open(os.path.join(CACHE, "docs.jsonl"), encoding="utf-8")]
+    return {d["id"]: d for d in docs}
+
+
+def fts_query(query: str, top: int = 240) -> list[tuple[str, float, str]]:
+    """Лайт-поиск: [(doc_id, score, chunk_text)] из SQLite FTS5 (bm25-ранжирование)."""
+    import sqlite3
+    toks = [t for t in tokenize(query) if len(t) > 1]
+    if not toks:
+        return []
+    match = " OR ".join('"' + t.replace('"', "") + '"' for t in toks[:30])
+    con = sqlite3.connect(FTS_P)
+    try:
+        rows = con.execute(
+            "SELECT f.rowid, bm25(chunk_fts) AS s FROM chunk_fts f "
+            "WHERE chunk_fts MATCH ? ORDER BY s LIMIT ?", (match, top)).fetchall()
+        if not rows:
+            return []
+        ids = [r[0] for r in rows]
+        score_of = {r[0]: -r[1] for r in rows}  # bm25(): меньше = лучше -> инвертируем
+        q = f"SELECT id, doc_id, text FROM chunk WHERE id IN ({','.join('?'*len(ids))})"
+        out = [(doc_id, score_of[cid], text) for cid, doc_id, text in con.execute(q, ids)]
+        out.sort(key=lambda t: -t[1])
+        return out
+    finally:
+        con.close()
+
+
 def build_index() -> dict:
+    from rank_bm25 import BM25Okapi
     docs = [json.loads(l) for l in open(os.path.join(CACHE, "docs.jsonl"), encoding="utf-8")]
     chunks, meta = [], []
     for d in docs:
@@ -75,6 +107,8 @@ def build_index() -> dict:
 
 
 def load_index() -> dict:
+    if LIGHT:
+        return {"lite": True, "docs": _load_docs()}
     if os.path.exists(INDEX_P):
         with open(INDEX_P, "rb") as f:
             return pickle.load(f)
@@ -167,22 +201,28 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
     parsed = parse_query(query)
     docs = idx["docs"]
 
-    # 1. BM25
-    scores = idx["bm25"].get_scores(tokenize(query))
-    order = sorted(range(len(scores)), key=lambda i: -scores[i])
-
-    # 2. кандидаты-публикации: BM25 (по максимальному чанку) + бонус за сущности
+    # 1-2. кандидаты-публикации: BM25 по чанкам (in-RAM или FTS5) + бонус за сущности
     doc_score: dict[str, float] = {}
-    doc_chunks: dict[str, list[int]] = {}
-    for i in order[:200]:
-        did = idx["meta"][i]["doc_id"]
-        if scores[i] <= 0:
-            break
-        if did not in doc_score:
-            doc_score[did] = float(scores[i])
-            doc_chunks[did] = []
-        if len(doc_chunks[did]) < 3:
-            doc_chunks[did].append(i)
+    doc_chunk_texts: dict[str, list[str]] = {}
+    if idx.get("lite"):
+        for did, score, text in fts_query(query):
+            if did not in doc_score:
+                doc_score[did] = score
+                doc_chunk_texts[did] = []
+            if len(doc_chunk_texts[did]) < 3:
+                doc_chunk_texts[did].append(text)
+    else:
+        scores = idx["bm25"].get_scores(tokenize(query))
+        order = sorted(range(len(scores)), key=lambda i: -scores[i])
+        for i in order[:200]:
+            did = idx["meta"][i]["doc_id"]
+            if scores[i] <= 0:
+                break
+            if did not in doc_score:
+                doc_score[did] = float(scores[i])
+                doc_chunk_texts[did] = []
+            if len(doc_chunk_texts[did]) < 3:
+                doc_chunk_texts[did].append(idx["chunks"][i])
 
     ent_docs = {}
     if conn is not None and parsed["entities"]:
@@ -266,8 +306,8 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
 
     top_chunk_texts = []
     for did in ranked[:6]:
-        for ci in doc_chunks.get(did, [])[:2]:
-            top_chunk_texts.append({"doc_id": did, "text": idx["chunks"][ci][:1500]})
+        for text in doc_chunk_texts.get(did, [])[:2]:
+            top_chunk_texts.append({"doc_id": did, "text": text[:1500]})
 
     return {
         "parsed": parsed,

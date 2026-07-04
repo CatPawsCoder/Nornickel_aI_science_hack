@@ -12,3 +12,4 @@ data/ingest.log
 *.log
 presentation/*.pdf
 tools/
+hf-space-stage/

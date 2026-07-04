@@ -75,7 +75,11 @@ def open_db(fresh: bool = False, read_only: bool = False) -> kuzu.Connection:
         shutil.rmtree(DB_PATH, ignore_errors=True)
         if os.path.exists(DB_PATH):
             os.remove(DB_PATH)
-    db = kuzu.Database(DB_PATH, read_only=read_only)
+    kw = {}
+    buf_mb = os.environ.get("KUZU_BUFFER_MB")
+    if buf_mb:
+        kw["buffer_pool_size"] = int(buf_mb) * 1024 * 1024
+    db = kuzu.Database(DB_PATH, read_only=read_only, **kw)
     conn = kuzu.Connection(db)
     if not read_only:
         for stmt in SCHEMA:
