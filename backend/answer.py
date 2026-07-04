@@ -158,7 +158,9 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
     # --- 5. консенсус / разногласия ---
     disagreements = _find_disagreements(conds)
     if disagreements:
-        md.append("## ⚠️ Зоны разногласий\n")
+        md.append("## ⚠️ Кандидаты в разногласия\n")
+        md.append("*Совпадают параметр, вещество и единица, интервалы не пересекаются. "
+                  "Режим/оборудование могут различаться — требуется проверка экспертом.*\n")
         for d in disagreements[:5]:
             md.append(f"- **{d['param']}**: источники дают несовпадающие значения — " +
                       "; ".join(f"«{x['quote']}» ({x['title'][:40]})" for x in d["variants"][:3]))

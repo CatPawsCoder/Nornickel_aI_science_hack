@@ -17,9 +17,13 @@ GPU нужен только на этапе сборки корпуса (OCR) �
 
 ```bash
 git clone <URL репозитория> && cd nauchny-klubok
-DATA_BUNDLE_URL="<прямая ссылка на nauchny-klubok-data-bundle.tar.gz>" docker compose up
+DATA_BUNDLE_URL="<прямая ссылка на nauchny-klubok-data-bundle.tar.gz>" \
+DATA_BUNDLE_SHA256="b6f74b17e1045b31cba7486a97cbfcc263ba630e388e844754ee04cf961ef0c9" \
+docker compose up
 # открыть http://localhost:8017
 ```
+SHA256 бандла проверяется контейнером перед распаковкой (защита от подмены архива);
+симлинки и абсолютные пути внутри tar отклоняются.
 
 Что нужно сделать ПЕРЕД подачей:
 1. Залить `nauchny-klubok-data-bundle.tar.gz` (лежит рядом с папкой проекта, 298 МБ)

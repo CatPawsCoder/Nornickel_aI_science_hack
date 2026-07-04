@@ -175,7 +175,12 @@ def parse_query(query: str) -> dict:
 
 # ---------------------------------------------------------------- filters
 def _cond_matches(cond: dict, want: dict) -> bool:
-    """Пересекается ли условие из графа с ограничением из запроса.
+    """Удовлетворяет ли условие из корпуса ограничению запроса.
+
+    Семантика — ВЛОЖЕННОСТЬ, а не пересечение: интервал источника должен
+    целиком лежать внутри интервала запроса. «Требуется ≤1000» НЕ считается
+    подтверждённым источником «допустимо ≤5000» (тот не гарантирует ≤1000).
+    Для запроса «около N» (~) оставлено мягкое пересечение.
     Сравниваем только при совпадении единиц (после нормализации дм3/л)."""
     UNIT_EQ = {"мг/дм3": "мг/л", "мг/дм³": "мг/л", "г/дм3": "г/л", "г/дм³": "г/л",
                "°c": "°с", "ос": "°с", "а/м²": "а/м2", "м³/ч": "м3/ч"}
@@ -183,9 +188,11 @@ def _cond_matches(cond: dict, want: dict) -> bool:
     u2 = UNIT_EQ.get(want["unit"].lower(), want["unit"].lower())
     if u1 != u2:
         return False
-    lo1, hi1 = _bounds(cond)
-    lo2, hi2 = _bounds(want)
-    return lo1 <= hi2 and lo2 <= hi1
+    lo1, hi1 = _bounds(cond)   # источник
+    lo2, hi2 = _bounds(want)   # запрос
+    if want["op"] == "~":
+        return lo1 <= hi2 and lo2 <= hi1  # «около» — допускаем пересечение
+    return lo2 <= lo1 and hi1 <= hi2      # источник ⊆ запрос
 
 
 def _bounds(f: dict) -> tuple[float, float]:
@@ -325,6 +332,7 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 continue
             rows = gq(conn,
                 f"MATCH (pub:Publication)-[:STATES]->(cl:Claim)-[:{rel}]->(x:{e['type']} {{id:$id}}) "
+                f"WHERE cl.status = 'active' "
                 f"RETURN cl.id AS id, cl.text AS text, cl.confidence AS confidence, "
                 f"cl.quote AS quote, "
                 f"cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo "
@@ -338,6 +346,7 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
         if qtok_all:
             rows = gq(conn,
                 "MATCH (pub:Publication)-[:STATES]->(cl:Claim) "
+                "WHERE cl.status = 'active' "
                 "RETURN cl.id AS id, cl.text AS text, cl.confidence AS confidence, "
                 "cl.quote AS quote, "
                 "cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo")

@@ -34,12 +34,17 @@ if want:
         sys.exit(f"SHA256 не совпал: {h.hexdigest()} != {want}")
     print("SHA256 ok")
 
-# защита от path traversal: только относительные пути без '..'
+# защита от path traversal и симлинков: только обычные файлы/каталоги
+# с относительными путями без '..'
 with tarfile.open(fn) as t:
     for m in t.getmembers():
         name = m.name.replace("\\", "/")
         if name.startswith("/") or ".." in name.split("/"):
             sys.exit(f"опасный путь в архиве: {m.name}")
+        if m.issym() or m.islnk():
+            sys.exit(f"симлинки в архиве запрещены: {m.name}")
+        if not (m.isreg() or m.isdir()):
+            sys.exit(f"недопустимый тип элемента архива: {m.name}")
     t.extractall(".")
 os.remove(fn)
 print("данные распакованы")

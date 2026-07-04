@@ -71,11 +71,13 @@ for i, (tag, q) in enumerate(QUESTIONS, 1):
         if has_direct:
             direct = md.split("##")[1].replace("✅ Прямой ответ", "").strip().split("\n")[0][:110]
         ok = has_direct and (a["n_claims"] > 0 or a["n_conditions"] > 0 or a["n_publications"] > 0)
-        # golden-проверка: ожидаемые числа/подстроки обязаны быть в ответе
+        # golden-проверка: ожидаемые числа/подстроки обязаны быть
+        # именно в секции «Прямой ответ», а не где-то в длинном markdown
+        direct_section = md.split("##")[1] if has_direct else ""
         golden_ok = True
         missing = []
         for needle in GOLDEN.get(tag, []):
-            if needle not in md:
+            if needle not in direct_section:
                 golden_ok = False
                 missing.append(needle)
         ok = ok and golden_ok

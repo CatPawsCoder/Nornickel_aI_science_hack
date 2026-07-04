@@ -131,9 +131,15 @@ class NumericFact:
 
 def extract_numeric_facts(text: str, window: int = 120) -> list[NumericFact]:
     facts = []
+    prev_fact_end = 0  # конец предыдущего числового факта
     for m in FACT_RE.finditer(text):
         start, end = m.start(), m.end()
         left = text[max(0, start - window):start]
+        # сегмент строго МЕЖДУ предыдущим фактом и текущим числом:
+        # перечисление «сульфаты, хлориды, Na по 200-300 мг/л» живёт только здесь.
+        # Без этой отсечки параметры предыдущего ограничения («сульфаты 200-300,
+        # а сухой остаток ≤1000») ложно приписывались следующему числу.
+        seg_left = text[max(0, start - window, prev_fact_end):start]
         right = text[end:end + 40]
         ctx = (left + text[start:end] + right).replace("\n", " ")
 
@@ -147,28 +153,39 @@ def extract_numeric_facts(text: str, window: int = 120) -> list[NumericFact]:
         if unit.lower() in ("года", "год", "лет") :
             continue  # даты не являются техническими ограничениями
 
-        # параметр = ближайшее к числу упоминание (максимальная позиция слева);
-        # all_params — все хинты в окне (для перечислений «сульфаты, хлориды, Ca... по 200-300»)
+        # параметр = ближайшее к числу упоминание (максимальная позиция слева
+        # в широком окне — для полноты атрибуции по корпусу);
+        # all_params — ТОЛЬКО из сегмента после предыдущего факта: это перечисление
+        # веществ, относящееся именно к текущему числу
         param, best_pos = "параметр", -1
-        all_params_found = []
         for name, p in PARAM_RES:
             last = None
             for pm in p.finditer(left):
                 last = pm
+            if last and last.end() > best_pos:
+                param, best_pos = name, last.end()
+        seg_found = []
+        for name, p in PARAM_RES:
+            last = None
+            for pm in p.finditer(seg_left):
+                last = pm
             if last:
-                all_params_found.append((last.end(), name))
-                if last.end() > best_pos:
-                    param, best_pos = name, last.end()
-        all_params_found.sort(key=lambda t: -t[0])
+                seg_found.append((last.end(), name))
+        seg_found.sort(key=lambda t: -t[0])
         seen_names = []
-        for _, name in all_params_found:
+        for _, name in seg_found:
             if name not in seen_names:
                 seen_names.append(name)
+        # главный параметр обязан быть в списке (если он из сегмента);
+        # если сегмент пуст — остаётся только ближайший параметр
+        if param != "параметр" and param not in seen_names:
+            seen_names = [param]
+        prev_fact_end = end
 
-        # вещество: ближайшее слева (или сразу справа от числа)
+        # вещество: ближайшее слева в сегменте текущего факта (или сразу справа)
         subst = ""
         last_s = None
-        for sm in SUBSTANCE_HINTS.finditer(left[-80:]):
+        for sm in SUBSTANCE_HINTS.finditer(seg_left[-80:]):
             last_s = sm
         if last_s:
             subst = last_s.group(0)

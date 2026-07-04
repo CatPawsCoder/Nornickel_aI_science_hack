@@ -110,6 +110,18 @@ def api_query(body: Query):
         result["publications"] = [p for p in result["publications"] if doc_passes(p["id"])]
         result["claims"] = [c for c in result["claims"] if doc_passes(c["doc_id"])]
         result["conditions"] = [c for c in result["conditions"] if doc_passes(c["doc_id"])]
+        # пересчёт строгого AND: после фильтра часть документов могла выпасть
+        if result.get("n_constraints", 0) >= 2:
+            by_constraint: dict = {}
+            for c in result["conditions"]:
+                by_constraint.setdefault(c.get("query_constraint", "?"), set()).add(c["doc_id"])
+            if len(by_constraint) >= result["n_constraints"]:
+                strict = set.intersection(*by_constraint.values())
+            else:
+                strict = set()   # какое-то условие целиком отфильтровано
+            result["strict_docs"] = sorted(strict)
+            for p in result["publications"]:
+                p["strict_match"] = p["id"] in strict
     if body.confidence:
         order = {"high": 3, "medium": 2, "low": 1}
         need = order.get(body.confidence, 1)
