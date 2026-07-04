@@ -188,10 +188,57 @@ def build_subgraph(result: dict) -> dict:
     for cl in result["claims"][:20]:
         nid = f"Claim:{cl['id']}"
         add_node(nid, cl["text"][:60], "claim", confidence=cl.get("confidence", ""),
-                 doc_id=cl["doc_id"])
+                 doc_id=cl["doc_id"], quote=cl.get("quote", ""))
         if f"Pub:{cl['doc_id']}" in seen:
             add_edge(f"Pub:{cl['doc_id']}", nid, "утверждает")
+    # эксперты по теме — требование ТЗ «показ связанных экспертов»
+    for ex in (result.get("experts") or [])[:6]:
+        nid = f"Expert:{ex['id']}"
+        add_node(nid, ex["name"], "expert", quote=ex.get("aff", ""))
+        for e in p["entities"][:4]:
+            eid = f"{e['type']}:{e['id']}"
+            if eid in seen:
+                add_edge(nid, eid, "эксперт в")
+                break
     return {"nodes": nodes, "edges": edges}
+
+
+@app.get("/api/export")
+def api_export(text: str, format: str = "jsonld"):
+    """Экспорт результата запроса в JSON-LD (FAIR: Interoperable/Reusable)."""
+    result = search(text, idx, conn)
+    graph_items = []
+    for c in result["claims"][:30]:
+        graph_items.append({
+            "@type": "Claim",
+            "@id": f"urn:klubok:claim:{c['id']}",
+            "text": c["text"],
+            "confidenceLevel": c.get("confidence"),
+            "quotation": c.get("quote", ""),
+            "datePublished": c.get("year"),
+            "isBasedOn": {"@type": "CreativeWork", "name": c["title"],
+                          "identifier": c["doc_id"]},
+        })
+    for c in result["conditions"][:30]:
+        graph_items.append({
+            "@type": "QuantitativeValue",
+            "@id": f"urn:klubok:condition:{c['id']}",
+            "name": c["param"],
+            "value": c["value"],
+            "unitText": c["unit"],
+            "additionalProperty": c["op"],
+            "quotation": c["quote"],
+            "isBasedOn": {"@type": "CreativeWork", "identifier": c["doc_id"]},
+        })
+    return {
+        "@context": {"@vocab": "https://schema.org/",
+                     "confidenceLevel": "https://klubok.example/confidence",
+                     "quotation": "https://schema.org/text"},
+        "@type": "Dataset",
+        "name": f"Научный клубок: выгрузка по запросу «{text[:100]}»",
+        "query": text,
+        "@graph": graph_items,
+    }
 
 
 @app.get("/api/graph")
@@ -248,10 +295,10 @@ def api_stats():
     domains = gq(conn, "MATCH (p:Publication)-[:MENTIONS_P]->(x:Process) "
                        "RETURN x.domain AS d, count(DISTINCT p) AS pubs ORDER BY pubs DESC")
     out["coverage_by_domain"] = domains
-    geo = {}
-    for d in DOCS.values():
-        geo[d["geo_hint"]] = geo.get(d["geo_hint"], 0) + 1
-    out["geo"] = geo
+    # гео-статистика из графа (источник истины), а не из файлового индекса
+    out["geo"] = {r["g"]: r["c"] for r in
+                  gq(conn, "MATCH (p:Publication) RETURN p.geo AS g, count(p) AS c")}
+    out["docs_in_index"] = len(DOCS)
     return out
 
 

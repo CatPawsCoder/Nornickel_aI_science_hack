@@ -34,35 +34,75 @@ def _numbers_of(text: str) -> set:
     return {n.replace(",", ".").rstrip("0").rstrip(".") for n in _NUM_RE.findall(text)}
 
 
-def _direct_answer(question: str, claims: list, conds: list) -> str | None:
+def _direct_answer(question: str, claims: list, conds: list,
+                   claims_out: list | None = None, period_note: str = "",
+                   chunks: list | None = None, docs_meta: dict | None = None) -> str | None:
     """Прямой ответ на вопрос строго из верифицированных фактов графа.
 
     LLM получает ТОЛЬКО топ-релевантные утверждения и обязана отвечать по ним.
+    Если в запрошенном периоде фактов нет — используются ближайшие по годам
+    с явной пометкой (обязательный сценарий «за последние N лет» не должен
+    заканчиваться пустым «информации нет», когда знания в корпусе есть).
     Валидация: каждое число в ответе LLM должно присутствовать в переданных
     фактах — иначе откат на детерминированный ответ (топ-утверждение дословно).
     """
-    top = [c for c in claims[:5] if c.get("relevance", 0) > 0] or claims[:3]
-    if not top and not conds:
+    top_in = [c for c in claims[:5] if c.get("relevance", 0) > 0]
+    top_out = [c for c in (claims_out or [])[:5] if c.get("relevance", 0) > 0]
+    # если релевантные знания оказались вне периода — используем и их,
+    # явно помечая год каждого факта (лучше честный ответ по 2018 г.,
+    # чем пустое «информации нет»)
+    best_in = top_in[0]["relevance"] if top_in else 0
+    best_out = top_out[0]["relevance"] if top_out else 0
+    top = top_in[:5]
+    out_used = False
+    if top_out and (not top_in or best_out > best_in):
+        top = (top_out[:3] + top_in[:3])[:6]
+        out_used = True
+    if not top:
+        top = claims[:3]
+
+    chunk_blob = ""
+    docs_meta = docs_meta or {}
+    chunks = chunks or []
+    # фрагменты текста корпуса подмешиваются, когда утверждений нет или они
+    # слабо релевантны вопросу (retrieval из источников, не выдумка LLM)
+    if chunks and (not top or max(best_in, best_out) < 15):
+        chunk_blob = "\n\n".join(
+            f"[Фрагмент из «{docs_meta.get(ch['doc_id'], {}).get('title', ch['doc_id'])[:60]}»]:\n{ch['text'][:900]}"
+            for ch in chunks[:2])
+    if not top and not conds and not chunk_blob:
         return None
-    facts_blob = "\n".join(f"- {c['text']} [источник: {c['title'][:60]}, узел {c['id']}]"
-                           for c in top)
+
+    facts_blob = "\n".join(
+        f"- ({c['year'] or 'н/д'}{', ВНЕ запрошенного периода' if out_used and c in top_out else ''}) "
+        f"{c['text']} [источник: {c['title'][:60]}, узел {c['id']}]" for c in top)
     cond_blob = "\n".join(f"- {c['param']}: {c['op']} {c['value']:g} {c['unit']} "
                           f"(цитата: «{c['quote']}»)" for c in conds[:5])
-    allowed_numbers = _numbers_of(facts_blob + " " + cond_blob)
+    allowed_numbers = _numbers_of(facts_blob + " " + cond_blob + " " + chunk_blob)
+
+    prefix = ""
+    if out_used and period_note and not top_in:
+        years = sorted({c["year"] for c in top_out if c.get("year")})
+        span = f"{years[0]}–{years[-1]}" if years else "другие годы"
+        prefix = (f"⚠️ В корпусе нет публикаций по теме {period_note}; "
+                  f"ближайшие данные — {span} гг.:\n\n")
 
     llm_ans = llm.complete(
-        "Ты — ассистент карты знаний. Ответь на вопрос КРАТКО (2-4 предложения), "
-        "используя ИСКЛЮЧИТЕЛЬНО приведённые факты. Все числа бери дословно из фактов. "
-        "Если в фактах нет ответа — так и скажи. Не добавляй ничего от себя.",
-        f"Вопрос: {question}\n\nФакты из графа знаний:\n{facts_blob}\n{cond_blob}")
+        "Ты — ассистент карты знаний. Ответь на вопрос КРАТКО (2-5 предложений), "
+        "используя ИСКЛЮЧИТЕЛЬНО приведённые факты/фрагменты. Все числа бери дословно. "
+        "Сначала дай ту часть ответа, которая следует из фактов (для фактов с пометкой "
+        "«ВНЕ запрошенного периода» обязательно укажи их год); затем, если каких-то "
+        "аспектов вопроса в данных нет (например, экономических показателей) — "
+        "явно скажи, чего именно не хватает. Не добавляй ничего от себя.",
+        f"Вопрос: {question}\n\nФакты из графа знаний:\n{facts_blob}\n{cond_blob}\n{chunk_blob}")
     if llm_ans:
         # верификация: числа ответа обязаны существовать в фактах
         if _numbers_of(llm_ans) <= allowed_numbers:
-            return llm_ans.strip()
+            return prefix + llm_ans.strip()
     # детерминированный откат: самое релевантное утверждение дословно
     if top:
         c = top[0]
-        return (f"{c['text']}\n\n<sub>источник: *{c['title'][:80]}* ({c['year'] or 'н/д'}) · "
+        return (f"{prefix}{c['text']}\n\n<sub>источник: *{c['title'][:80]}* ({c['year'] or 'н/д'}) · "
                 f"узел `{c['id']}`</sub>")
     return None
 
@@ -72,7 +112,13 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
     md = []
 
     # --- 0. прямой ответ на вопрос (строго из графа, числа валидированы) ---
-    direct = _direct_answer(p["text"], result.get("claims", []), result.get("conditions", []))
+    period_note = ""
+    if p.get("year_from"):
+        period_note = f"за период с {p['year_from']}{(' по ' + str(p['year_to'])) if p.get('year_to') else ''} г."
+    direct = _direct_answer(p["text"], result.get("claims", []), result.get("conditions", []),
+                            claims_out=result.get("claims_out_of_period"),
+                            period_note=period_note,
+                            chunks=result.get("chunks"), docs_meta=docs_meta)
     if direct:
         md.append("## ✅ Прямой ответ\n")
         md.append(direct)
@@ -153,6 +199,26 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
             geo = GEO_LABEL.get(pub["geo_hint"], "—")
             md.append(f"{i}. **{pub['title'][:90]}** — {pub['year'] or 'н/д'} · {geo} · "
                       f"релевантность {pub['score']:.0f} · `{pub['id']}`")
+        md.append("")
+
+    # --- 4а. знания вне запрошенного периода (не теряем, а честно помечаем) ---
+    claims_out = result.get("claims_out_of_period") or []
+    if claims_out and p.get("year_from"):
+        md.append("## ⏳ Релевантные знания вне запрошенного периода\n")
+        md.append(f"*Запрошен период с {p['year_from']} г.; ниже — более ранние "
+                  f"публикации по теме из корпуса.*\n")
+        for c in claims_out[:5]:
+            md.append(f"- ({c['year'] or 'н/д'}) {c['text'][:200]}  \n"
+                      f"  <sub>источник: *{c['title'][:70]}* · узел `{c['id']}`</sub>")
+        md.append("")
+
+    # --- 4б. эксперты и носители компетенций (требование ТЗ) ---
+    experts = result.get("experts") or []
+    if experts:
+        md.append("## 👥 Эксперты и носители компетенций по теме\n")
+        for ex in experts[:8]:
+            aff = f" — {ex['aff']}" if ex.get("aff") else ""
+            md.append(f"- **{ex['name']}**{aff}  \n  <sub>{ex.get('via','')}</sub>")
         md.append("")
 
     # --- 5. консенсус / разногласия ---

@@ -322,10 +322,31 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
         ranked.append(did)
 
     # 5. claims из LLM-слоя: по сущностям запроса + лексический поиск по всем
-    #    утверждениям (термины вне тезауруса — HiPRO, SULFATEQ, названия установок)
+    #    утверждениям (термины вне тезауруса — HiPRO, SULFATEQ, названия установок).
+    #    Год-фильтр НЕ выбрасывает знания: утверждения вне запрошенного периода
+    #    собираются отдельно (claims_out_of_period) и честно помечаются в ответе.
+    def passes_geo(did: str) -> bool:
+        d = docs.get(did)
+        if d is None:
+            return False
+        if parsed["geo"] in ("ru", "foreign") and d["geo_hint"] not in (parsed["geo"], "mixed"):
+            return False
+        return True
+
+    def in_period(did: str) -> bool:
+        d = docs.get(did)
+        y = d.get("year") if d else None
+        if parsed["year_from"] and y and y < parsed["year_from"]:
+            return False
+        if parsed["year_to"] and y and y > parsed["year_to"]:
+            return False
+        return True
+
     claims = []
+    claims_out = []
     if conn is not None:
         seen = set()
+        collected = []
         for e in parsed["entities"][:6]:
             rel = {"Material": "CLAIM_ABOUT_M", "Process": "CLAIM_ABOUT_P"}.get(e["type"])
             if not rel:
@@ -338,9 +359,9 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 f"cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo "
                 f"LIMIT 100", {"id": e["id"]})
             for r in rows:
-                if r["id"] not in seen and passes(r["doc_id"]):
+                if r["id"] not in seen and passes_geo(r["doc_id"]):
                     seen.add(r["id"])
-                    claims.append(dict(r))
+                    collected.append(dict(r))
         # лексический fallback: скан всех утверждений (их сотни — дёшево)
         qtok_all = [t for t in set(tokenize(query)) if len(t) > 2 and t not in STOPWORDS]
         if qtok_all:
@@ -351,20 +372,46 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                 "cl.quote AS quote, "
                 "cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo")
             for r in rows:
-                if r["id"] in seen or not passes(r["doc_id"]):
+                if r["id"] in seen or not passes_geo(r["doc_id"]):
                     continue
                 ctok = set(tokenize(r["text"]))
                 if sum(1 for t in qtok_all if t in ctok) >= 2 or any(
                         len(t) >= 5 and t in ctok for t in qtok_all):
                     seen.add(r["id"])
-                    claims.append(dict(r))
+                    collected.append(dict(r))
         # скоринг: пересечение стем-токенов вопроса и текста утверждения;
         # редкие/длинные слова (имена установок, процессов) весят больше частых
-        for c in claims:
+        for c in collected:
             ctok = set(tokenize(c["text"]))
-            score = sum(min(len(t), 10) for t in qtok_all if t in ctok)
-            c["relevance"] = score
-        claims.sort(key=lambda c: -c["relevance"])
+            c["relevance"] = sum(min(len(t), 10) for t in qtok_all if t in ctok)
+        collected.sort(key=lambda c: -c["relevance"])
+        for c in collected:
+            (claims if in_period(c["doc_id"]) else claims_out).append(c)
+
+    # 6. эксперты по теме запроса: компетенции + авторство топ-документов
+    experts = []
+    if conn is not None:
+        seen_e = set()
+        for e in parsed["entities"][:6]:
+            rel = {"Process": "EXPERT_IN_P", "Material": "EXPERT_IN_M"}.get(e["type"])
+            if not rel:
+                continue
+            rows = gq(conn,
+                f"MATCH (x:Expert)-[:{rel}]->(t:{e['type']} {{id:$id}}) "
+                f"RETURN DISTINCT x.id AS id, x.name AS name, x.affiliation AS aff",
+                {"id": e["id"]})
+            for r in rows:
+                if r["id"] not in seen_e:
+                    seen_e.add(r["id"])
+                    experts.append({**dict(r), "via": f"эксперт в: {name_of(e['type'], e['id'])}"})
+        for did in ranked[:5]:
+            rows = gq(conn,
+                "MATCH (x:Expert)-[:AUTHORED]->(p:Publication {id:$id}) "
+                "RETURN DISTINCT x.id AS id, x.name AS name, x.affiliation AS aff", {"id": did})
+            for r in rows:
+                if r["id"] not in seen_e:
+                    seen_e.add(r["id"])
+                    experts.append({**dict(r), "via": f"автор: {docs[did]['title'][:50]}"})
 
     top_chunk_texts = []
     for did in ranked[:6]:
@@ -379,6 +426,8 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
              "strict_match": did in strict_docs} for did in ranked[:15]],
         "conditions": matched_conditions[:40],
         "claims": claims[:60],
+        "claims_out_of_period": claims_out[:20],
+        "experts": experts[:10],
         "chunks": top_chunk_texts[:top_chunks],
         "n_constraints": len(constraint_docsets),
         "strict_docs": sorted(strict_docs),
