@@ -281,7 +281,7 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                     "RETURN c.id AS id, c.param AS param, c.substance AS substance, "
                     "c.op AS op, c.value AS value, c.value2 AS value2, c.unit AS unit, "
                     "c.quote AS quote, c.context AS context, p.id AS doc_id, p.title AS title "
-                    "LIMIT 500", {"param": param_name})
+                    "ORDER BY c.id LIMIT 5000", {"param": param_name})
                 for r in rows:
                     if r["id"] in seen_ids:
                         continue
