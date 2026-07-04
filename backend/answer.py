@@ -81,7 +81,7 @@ def _direct_answer(question: str, claims: list, conds: list,
     facts_blob = "\n".join(
         f"- ({c['year'] or 'н/д'}, {GEO_TAG.get(c.get('geo') or '', '—')}"
         f"{', ВНЕ запрошенного периода' if out_used and c in top_out else ''}) "
-        f"{c['text']} [узел {c['id']}]" for c in top)
+        f"{c['text'][:260]} [узел {c['id']}]" for c in top)
     cond_blob = "\n".join(f"- {c['param']}: {c['op']} {c['value']:g} {c['unit']} "
                           f"(цитата: «{c['quote']}»)" for c in conds[:5])
     allowed_numbers = _numbers_of(facts_blob + " " + cond_blob + " " + chunk_blob)
@@ -119,7 +119,7 @@ def _direct_answer(question: str, claims: list, conds: list,
         + intent_note + compare_note +
         " Не добавляй ничего от себя.",
         f"Вопрос: {question}\n\nФакты из графа знаний:\n{facts_blob}\n{cond_blob}\n{chunk_blob}",
-        temperature=0.0)
+        temperature=0.0, max_tokens=650)  # лимит генерации: держим латентность ~3-5с
     if llm_ans:
         # верификация: числа ответа обязаны существовать в фактах
         if _numbers_of(llm_ans) <= allowed_numbers:
