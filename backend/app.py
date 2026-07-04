@@ -93,11 +93,27 @@ def build_subgraph(result: dict) -> dict:
                 f"RETURN r.count AS c", {"pid": pub["id"], "eid": e["id"]})
             if rows:
                 add_edge(f"Pub:{pub['id']}", f"{e['type']}:{e['id']}", "упоминает")
+    cond_node_ids = {}
     for c in result["conditions"][:15]:
         cid = f"Cond:{c['id']}"
+        cond_node_ids[c["id"]] = cid
         add_node(cid, f"{c['param']} {c['op']} {c['value']:g} {c['unit']}", "condition",
                  quote=c["quote"], doc_id=c["doc_id"])
         add_edge(f"Pub:{c['doc_id']}", cid, "условие") if f"Pub:{c['doc_id']}" in seen else None
+    # красные рёбра противоречий между показанными условиями
+    if cond_node_ids:
+        ids = list(cond_node_ids.keys())
+        rows = gq(conn,
+            "MATCH (a:Condition)-[r:CONTRADICTS_C]->(b:Condition) "
+            "WHERE a.id IN $ids AND b.id IN $ids "
+            "RETURN a.id AS a, b.id AS b, r.reason AS reason LIMIT 20", {"ids": ids})
+        for r in rows:
+            eid = f"contra:{r['a']}:{r['b']}"
+            if eid not in seen:
+                seen.add(eid)
+                edges.append({"data": {"id": eid, "source": cond_node_ids[r["a"]],
+                                       "target": cond_node_ids[r["b"]],
+                                       "label": "противоречит", "kind": "contradicts"}})
     for cl in result["claims"][:20]:
         nid = f"Claim:{cl['id']}"
         add_node(nid, cl["text"][:60], "claim", confidence=cl.get("confidence", ""),

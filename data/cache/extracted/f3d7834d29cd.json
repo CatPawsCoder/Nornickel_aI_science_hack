@@ -1,0 +1,42 @@
+{
+ "doc_id": "f3d7834d29cd",
+ "summary": "",
+ "geo": "mixed",
+ "claims": [
+  {
+   "id": "f3d7834d29cd-a2",
+   "text": "Концентрация Li2O в рассолах колеблется от 0,01 до 0,50%.",
+   "confidence": "high",
+   "quote": "Концентрация Li2O в рассолах колеблется от 0,01 до 0,50%, редко более.",
+   "entities": [
+    "Material:lithium"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "f3d7834d29cd-a6",
+   "text": "Сернокислотный способ применяют для литиевых концентратов всех типов.",
+   "confidence": "high",
+   "quote": "Сернокислотный способ применяют для литиевых концентратов всех типов: сподуменовых, лепидолитовых и амблигонитовых.",
+   "entities": [
+    "Process:electrowinning",
+    "Material:lithium"
+   ],
+   "geo": "unknown"
+  },
+  {
+   "id": "f3d7834d29cd-a9",
+   "text": "Известковый способ применяют также при переработке лепидолитовых концентратов.",
+   "confidence": "high",
+   "quote": "Известковый способ применяют также при переработке лепидолитовых концентратов.",
+   "entities": [
+    "Process:electrowinning",
+    "Material:lithium"
+   ],
+   "geo": "unknown"
+  }
+ ],
+ "relations": [],
+ "experts": [],
+ "auto": true
+}

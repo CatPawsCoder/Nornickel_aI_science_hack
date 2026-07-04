@@ -1,0 +1,88 @@
+{
+ "doc_id": "fd450184fa2d",
+ "summary": "",
+ "geo": "unknown",
+ "claims": [
+  {
+   "id": "fd450184fa2d-a1",
+   "text": "Нужен долгосрочный проектный рост для удовлетворения рыночного спроса на никель.",
+   "confidence": "high",
+   "quote": "Forecast market requirement (kt Ni)",
+   "entities": [
+    "Material:nickel"
+   ],
+   "geo": "unknown"
+  },
+  {
+   "id": "fd450184fa2d-a2",
+   "text": "В 2012 году средние затраты на производство никеля из NPI составили 5-6 долларов за фунт.",
+   "confidence": "high",
+   "quote": "NPI average costs of production (2012 data)",
+   "entities": [
+    "Material:nickel"
+   ],
+   "geo": "unknown"
+  },
+  {
+   "id": "fd450184fa2d-a3",
+   "text": "Прогнозируемая средняя цена никеля составляет около 16000 долларов за тонну.",
+   "confidence": "high",
+   "quote": "Forecast average nickel price ca. $16000/t",
+   "entities": [
+    "Material:nickel"
+   ],
+   "geo": "unknown"
+  },
+  {
+   "id": "fd450184fa2d-a4",
+   "text": "Капитальные затраты на запуск проектов увеличиваются, что может привести к задержкам.",
+   "confidence": "medium",
+   "quote": "Start-up delays seem inevitable – as does an increase in capital cost",
+   "entities": [],
+   "geo": "unknown"
+  },
+  {
+   "id": "fd450184fa2d-a5",
+   "text": "Индонезия поставляет около 300 тысяч тонн никеля в руде в Китай.",
+   "confidence": "high",
+   "quote": "Indonesia impact ca. 300kt Ni in ore into China alone",
+   "entities": [
+    "Material:nickel"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "fd450184fa2d-a6",
+   "text": "Интенсивность капитала для проектов по производству никеля варьируется в зависимости от типа проекта.",
+   "confidence": "medium",
+   "quote": "Capital Intensity ($/lb Ni/a)",
+   "entities": [
+    "Material:nickel"
+   ],
+   "geo": "unknown"
+  },
+  {
+   "id": "fd450184fa2d-a7",
+   "text": "Средняя цена на никель в 2008 году составила 15 долларов за фунт.",
+   "confidence": "high",
+   "quote": "Incentive price ca. $15/lb ($33000/t)",
+   "entities": [
+    "Material:nickel"
+   ],
+   "geo": "unknown"
+  },
+  {
+   "id": "fd450184fa2d-a8",
+   "text": "Производственные изменения по годам показывают колебания в производстве никеля.",
+   "confidence": "medium",
+   "quote": "Year-on-year change in production (kt Ni)",
+   "entities": [
+    "Material:nickel"
+   ],
+   "geo": "unknown"
+  }
+ ],
+ "relations": [],
+ "experts": [],
+ "auto": true
+}

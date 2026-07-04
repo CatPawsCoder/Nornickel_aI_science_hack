@@ -137,6 +137,9 @@ function initCy(elements) {
           'label': 'data(label)', 'font-size': 7, 'color': '#8b96ab',
           'target-arrow-shape': 'triangle', 'target-arrow-color': '#39466b',
           'arrow-scale': .7 } },
+      { selector: 'edge[kind="contradicts"]', style: {
+          'width': 2, 'line-color': '#ff6b6b', 'line-style': 'dashed',
+          'color': '#ff6b6b', 'target-arrow-shape': 'none' } },
     ],
     layout: { name: 'cose', animate: false, nodeRepulsion: 9000, idealEdgeLength: 80 },
     wheelSensitivity: .25,
