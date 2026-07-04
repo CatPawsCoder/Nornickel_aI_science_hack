@@ -26,7 +26,7 @@ import llm
 
 app = FastAPI(title="Научный клубок — карта знаний R&D")
 
-conn = open_db()
+conn = open_db(read_only=True)
 idx = load_index()
 DOCS = idx["docs"]
 
@@ -156,7 +156,8 @@ def api_stats():
     for tbl in ("Publication", "Material", "Process", "Equipment", "Facility",
                 "Condition", "Claim", "Expert"):
         out[tbl] = gq(conn, f"MATCH (n:{tbl}) RETURN count(n) AS c")[0]["c"]
-    out["llm_available"] = llm.yandex_available()
+    out["llm_available"] = llm.any_llm_available()
+    out["llm_provider"] = llm.active_provider()
     domains = gq(conn, "MATCH (p:Publication)-[:MENTIONS_P]->(x:Process) "
                        "RETURN x.domain AS d, count(DISTINCT p) AS pubs ORDER BY pubs DESC")
     out["coverage_by_domain"] = domains

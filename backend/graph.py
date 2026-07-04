@@ -68,15 +68,16 @@ SCHEMA = [
 ]
 
 
-def open_db(fresh: bool = False) -> kuzu.Connection:
+def open_db(fresh: bool = False, read_only: bool = False) -> kuzu.Connection:
     if fresh and os.path.exists(DB_PATH):
         shutil.rmtree(DB_PATH, ignore_errors=True)
         if os.path.exists(DB_PATH):
             os.remove(DB_PATH)
-    db = kuzu.Database(DB_PATH)
+    db = kuzu.Database(DB_PATH, read_only=read_only)
     conn = kuzu.Connection(db)
-    for stmt in SCHEMA:
-        conn.execute(stmt)
+    if not read_only:
+        for stmt in SCHEMA:
+            conn.execute(stmt)
     return conn
 
 

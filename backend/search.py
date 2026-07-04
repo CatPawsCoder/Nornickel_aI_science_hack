@@ -217,19 +217,25 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
     matched_conditions = []
     if conn is not None and parsed["numeric"]:
         for want in parsed["numeric"]:
-            rows = gq(conn,
-                "MATCH (p:Publication)-[:HAS_CONDITION]->(c:Condition) "
-                "WHERE c.param = $param "
-                "RETURN c.id AS id, c.param AS param, c.substance AS substance, "
-                "c.op AS op, c.value AS value, c.value2 AS value2, c.unit AS unit, "
-                "c.quote AS quote, c.context AS context, p.id AS doc_id, p.title AS title "
-                "LIMIT 500", {"param": want["param"]})
-            for r in rows:
-                r2 = dict(r)
-                r2["value2"] = None if r2["value2"] == -1.0 else r2["value2"]
-                if _cond_matches(r2, want) and passes(r2["doc_id"]):
-                    r2["query_constraint"] = f"{want['param']} {want['op']} {want['value']}{'-' + str(want['value2']) if want.get('value2') else ''} {want['unit']}"
-                    matched_conditions.append(r2)
+            params_to_try = want.get("all_params") or [want["param"]]
+            seen_ids = set()
+            for param_name in params_to_try:
+                rows = gq(conn,
+                    "MATCH (p:Publication)-[:HAS_CONDITION]->(c:Condition) "
+                    "WHERE c.param = $param "
+                    "RETURN c.id AS id, c.param AS param, c.substance AS substance, "
+                    "c.op AS op, c.value AS value, c.value2 AS value2, c.unit AS unit, "
+                    "c.quote AS quote, c.context AS context, p.id AS doc_id, p.title AS title "
+                    "LIMIT 500", {"param": param_name})
+                for r in rows:
+                    if r["id"] in seen_ids:
+                        continue
+                    r2 = dict(r)
+                    r2["value2"] = None if r2["value2"] == -1.0 else r2["value2"]
+                    if _cond_matches(r2, want) and passes(r2["doc_id"]):
+                        seen_ids.add(r["id"])
+                        r2["query_constraint"] = f"{want['param']} {want['op']} {want['value']}{'-' + str(want['value2']) if want.get('value2') else ''} {want['unit']}"
+                        matched_conditions.append(r2)
 
     # 5. claims из LLM-слоя по сущностям запроса
     claims = []

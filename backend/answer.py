@@ -163,7 +163,8 @@ def _find_gaps(parsed: dict, claims: list, conds: list, pubs: list) -> list[str]
             if not pubs:
                 gaps.append(f"По сущности **{ename}** нет публикаций в базе — кандидат на внешний мониторинг")
     for f in parsed["numeric"]:
-        matched = [c for c in conds if c["param"] == f["param"]]
+        params = f.get("all_params") or [f["param"]]
+        matched = [c for c in conds if c["param"] in params]
         if not matched:
             gaps.append(f"Нет численных данных по ограничению `{_fmt_constraint(f)}` — "
                         f"комбинация не изучена в загруженном корпусе")

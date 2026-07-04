@@ -2,6 +2,11 @@
 __pycache__/
 *.pyc
 data/raw/
-data/cache/
+data/cache/*
+!data/cache/extracted/
 data/index/
+data/kg.kuzu
+data/kg.kuzu.wal
+data/server.log
+data/ingest.log
 *.log

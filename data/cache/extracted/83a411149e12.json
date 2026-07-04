@@ -1,0 +1,323 @@
+{
+ "doc_id": "83a411149e12",
+ "summary": "Тематическая информация Института Гипроникель (ОИП-05-2019, С.В. Подоханова): сводка основных параметров электроэкстракции меди на предприятиях по всему миру (Чили, Перу, США, ЮАР, Испания, Кипр, Норвегия, Финляндия, Замбия, ДР Конго) по данным мировых обследований tankhouse — плотности тока, выход по току, потоки и составы электролита, температура, конструкции и количество ванн, составы катодов и свинцовых анодов, а также обобщенные проектные параметры цикла Cu EW.",
+ "geo": "foreign",
+ "claims": [
+  {
+   "id": "83a411149e12-cl1",
+   "text": "Обзор основан на масштабном анализе работы мировых производственных площадок с участком электроэкстракции меди (Cu EW) и приводит показатели получения товарной меди на предприятиях по всему миру.",
+   "confidence": "high",
+   "quote": "Авторами труда [4] был проведен масштабный анализ работы мировых производственных площадок, включающих участок Cu EW.",
+   "entities": [
+    "Process:electrowinning",
+    "Material:copper"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl2",
+   "text": "Типовые проектные параметры цикла Cu EW: содержание меди в поступающем электролите 50 г/л, в отработанном — 35 г/л.",
+   "confidence": "high",
+   "quote": "Cu в поступающем электролите | г/л | 50\nCu в отработанном электролите | г/л | 35",
+   "entities": [
+    "Process:electrowinning",
+    "Material:copper",
+    "Material:electrolyte"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl3",
+   "text": "Типовые проектные показатели цикла Cu EW: плотность тока 320 А/м2, выход по току 85%, проектное напряжение на ванне 2,3 В, рабочее 2,1 В.",
+   "confidence": "high",
+   "quote": "Плотность тока | А/м2 | 320\nВыход по току | % | 85\nНапряжение на ванне (проектные) | В | 2,3\nНапряжение на ванне (рабочее) | В | 2,1",
+   "entities": [
+    "Process:electrowinning",
+    "Equipment:ew_cell",
+    "Material:copper"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl4",
+   "text": "Типовая проектная геометрия ванны Cu EW: расстояние между анодом и катодом 45,5 мм при межосевом расстоянии катод-катод (и анод-анод) 100 мм.",
+   "confidence": "high",
+   "quote": "Расстояние между анодом и катодом (анод-анод* = 100 мм) | мм | 45,5\nРасстояние катод-катод* | мм | 100",
+   "entities": [
+    "Equipment:ew_cell",
+    "Process:electrowinning"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl5",
+   "text": "Поток электролита в и из каждой ванны на чилийских площадках: Collahuasi 0,3; Minera El Abra 0,32; Escondida Oxide 0,27; Escondida Sulfide 0,28; Gaby 0,29 м3/мин.",
+   "confidence": "high",
+   "quote": "Поток электролита в и из каждой ванны, м3/мин | 0,3 | 0,32 | 0,27 | 0,28 | 0,29",
+   "entities": [
+    "Material:electrolyte",
+    "Equipment:ew_cell",
+    "Process:electrowinning",
+    "NEW:Facility:Collahuasi",
+    "NEW:Facility:El Abra",
+    "NEW:Facility:Escondida"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl6",
+   "text": "Плотность тока Cu EW на чилийских площадках: Collahuasi 170 А/м2, Minera El Abra 255-315, Escondida Oxide 290-316, Escondida Sulfide 350, Gaby 276,5/333,3 А/м2.",
+   "confidence": "high",
+   "quote": "Плотность тока, А/м2 | 170 | 255 - 315 | 290-316 | 350 | 276,5/333,3",
+   "entities": [
+    "Process:electrowinning",
+    "NEW:Facility:Collahuasi",
+    "NEW:Facility:El Abra",
+    "NEW:Facility:Escondida"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl7",
+   "text": "Radomiro Tomic (Чили) — крупнейшая площадка Cu EW в обзоре: производство катодов 315 747 т (2015) при проектной мощности 300 000 т/г.",
+   "confidence": "high",
+   "quote": "Проектная мощность (т/г катодов) | 75 000 | 60 000 | 67 000 | 300 000 | 25 000\nПроизводство катодов (т) | 71 000 (2015) | 26 700 (2014) | 60 000 (2015) | 315 747 (2015) | 24 399 (2009)",
+   "entities": [
+    "Process:electrowinning",
+    "Material:copper",
+    "NEW:Facility:Radomiro Tomic"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl8",
+   "text": "Nikkelverk (Норвегия) ведет Cu EW из нетипично богатого электролита: на входе Cu 70 г/л при H2SO4 всего 90 г/л и температуре 60°С — против Cu 30-50 г/л и H2SO4 140-180 г/л на классических SX-EW площадках той же таблицы.",
+   "confidence": "high",
+   "quote": "Содержание Cu, г/л | 50 | 40 | 37-38 | 30 | 70\nH2SO4, г/л | 140-145 | 180 | 180 | 165 | 90\nТемпература электролита, С | 37,8 | 33 | 45-50 | 35 | 60",
+   "entities": [
+    "Process:electrowinning",
+    "Material:copper",
+    "Material:sulfuric_acid",
+    "Material:electrolyte",
+    "Facility:glencore"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl9",
+   "text": "На Nikkelverk эксплуатируются 466 спаренных ванн — нетипичная конструкция электролизного цеха Cu EW.",
+   "confidence": "high",
+   "quote": "Количество | 18 | 143 | 144 | 50 | 466 (спаренные ванны)",
+   "entities": [
+    "Equipment:ew_cell",
+    "Facility:glencore",
+    "Process:electrowinning"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl10",
+   "text": "Lonmin Base Metal Refinery (ЮАР) работает с электролитом, содержащим Cu 60-70 г/л при низкой кислотности H2SO4 20-35 г/л (медь из растворов рафинирования никелевого штейна, а не SX-EW).",
+   "confidence": "medium",
+   "quote": "Содержание Cu, г/л | 60-70 | 44 | 34 | 45 | 38\nH2SO4, г/л | 20-35 | 30 | 170 | 165 | 160-170",
+   "entities": [
+    "Process:electrowinning",
+    "Material:copper",
+    "Material:sulfuric_acid",
+    "NEW:Facility:Lonmin BMR"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl11",
+   "text": "На заводах базовых металлов Lonmin и Northam (ЮАР) катодный выход по току составляет лишь 80% — заметно ниже, чем 87,89-93% на классических Cu EW площадках Cerro Verde, Toquepala и Bagdad.",
+   "confidence": "high",
+   "quote": "Катодный выход по току, % | 80 | 80 | 87,89 | 93 | 91",
+   "entities": [
+    "Process:electrowinning",
+    "NEW:Facility:Lonmin BMR",
+    "NEW:Facility:Northam BMR",
+    "NEW:Facility:Cerro Verde"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl12",
+   "text": "Температура поступающего электролита на Lonmin BMR 50-55°С, на Northam BMR 65°С — самая высокая среди площадок обзора (Cerro Verde 44, Toquepala 45, Bagdad 43-49°С).",
+   "confidence": "high",
+   "quote": "Температура электролита, °С | 50-55 | 65 | 44 | 45 | 43-49",
+   "entities": [
+    "Material:electrolyte",
+    "Process:electrowinning",
+    "NEW:Facility:Northam BMR",
+    "NEW:Facility:Lonmin BMR"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl13",
+   "text": "Плотность тока Cu EW на африканско-европейской группе площадок: OMG (Финляндия) 200-320, Kansanshi (Замбия) 280, Mutanda (ДР Конго) 230-240, Tenke Fungurume (ДР Конго) 269-444 А/м2 — максимальная в обзоре.",
+   "confidence": "high",
+   "quote": "Плотность тока, А/м2 | 200-320 | 280 | 230-240 | 269-444",
+   "entities": [
+    "Process:electrowinning",
+    "NEW:Facility:Tenke Fungurume",
+    "NEW:Facility:Kansanshi",
+    "NEW:Facility:Mutanda"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl14",
+   "text": "Поток электролита в и из каждой ванны: Sierrita 0,17; Tyrone 0,19; Cobre las Cruces (Испания) — до 0,45 м3/мин, наибольший в обзоре; Hellenic Copper 0,11 м3/мин.",
+   "confidence": "high",
+   "quote": "Поток электролита в и из каждой ванны, м3/мин | 0,17 | 0,19 | до 0,45 | 0,11",
+   "entities": [
+    "Material:electrolyte",
+    "Equipment:ew_cell",
+    "Process:electrowinning",
+    "NEW:Facility:Cobre las Cruces"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl15",
+   "text": "По данным Anderson и др. (2009), для производств 1-10 и 10-15 тыс т/г типично 30-36 катодов на ванну, а начиная с уровня 40-50 тыс т/г — 60-66 катодов на ванну.",
+   "confidence": "high",
+   "quote": "Произ-во | тыс.т/г | 1-10 | 10-15 | 15-20 | 20-30 | 30-40 | 40-50 | 50-60 | 60-70\n(Anderson и др., 2009) | Катодов на ванну | 30-36 | 30-36 | - | 45 | - | 60-66 | 60-66 | 60-66",
+   "entities": [
+    "Equipment:ew_cell",
+    "Process:electrowinning"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl16",
+   "text": "Типичный состав свинцовых анодов Cu EW (чилийские площадки): Pb 98,4-98,7%, Sn 1,2-1,5%, Ca 0,06-0,085%.",
+   "confidence": "high",
+   "quote": "Pb % | 98,45 | 98,42 | 98,55 | 98,4 | 98,4-98,7\nSn % | 1,3-1,45 | 1,4 | 1,375 | 1,5 | 1,5-1,2\nCa % | 0,065-0,085 | 0,08 | 0,075 | 0,08 | 0,06-0,085",
+   "entities": [
+    "Material:lead",
+    "Equipment:ew_cell",
+    "Process:electrowinning"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl17",
+   "text": "Площадка Miami (США) выделяется нетипично большими ваннами 17,7 х 1,89 х 2,13 м с 90 анодами / 89 катодами на ванну (у остальных площадок группы длина ванн 6,55-6,8 м и 64-67 анодов).",
+   "confidence": "high",
+   "quote": "Размеры (длина х ширина х глубина, м) | 6,8 х 1,2 х 1,3 | 17,7 х 1,89 х 2,13 | 6,55 х 1,22 х 1,22 | 6,71 х 1,22 х 1,52 | 6,71 х 1,22 х 1,57\nАнодов/катодов на ванну | | 90/89 | 64/63 | 67/66 | 66/65",
+   "entities": [
+    "Equipment:ew_cell",
+    "Process:electrowinning",
+    "NEW:Facility:Miami"
+   ],
+   "geo": "foreign"
+  },
+  {
+   "id": "83a411149e12-cl18",
+   "text": "Проектное время работы цикла Cu EW принимается 7884 часов в год.",
+   "confidence": "high",
+   "quote": "Мощность (проектная) | тыс. т/год Cu | Переменная величина\nВремя процесса | час | 7884",
+   "entities": [
+    "Process:electrowinning",
+    "Material:copper"
+   ],
+   "geo": "foreign"
+  }
+ ],
+ "relations": [
+  {
+   "type": "applied_at",
+   "from": "Process:electrowinning",
+   "to": "NEW:Facility:Collahuasi",
+   "quote": "Площадка | Collahuasi | Minera El Abra | Escondida Oxide | Escondida Sulfide | Gaby или"
+  },
+  {
+   "type": "applied_at",
+   "from": "Process:electrowinning",
+   "to": "NEW:Facility:Escondida",
+   "quote": "Площадка | Collahuasi | Minera El Abra | Escondida Oxide | Escondida Sulfide | Gaby или"
+  },
+  {
+   "type": "applied_at",
+   "from": "Process:electrowinning",
+   "to": "NEW:Facility:Radomiro Tomic",
+   "quote": "Площадка | Lomas Bayas | Mantos Blancos | Manto Verde | Radomiro Tomic | Salvador"
+  },
+  {
+   "type": "applied_at",
+   "from": "Process:electrowinning",
+   "to": "Facility:glencore",
+   "quote": "Площадка | Sierrita | Tyrone | Cobre las Cruces | Hellenic Copper | Nikkelverk"
+  },
+  {
+   "type": "applied_at",
+   "from": "Process:electrowinning",
+   "to": "NEW:Facility:Cobre las Cruces",
+   "quote": "Площадка | Sierrita | Tyrone | Cobre las Cruces | Hellenic Copper | Nikkelverk"
+  },
+  {
+   "type": "applied_at",
+   "from": "Process:electrowinning",
+   "to": "NEW:Facility:Tenke Fungurume",
+   "quote": "Площадка | OMG | Kansanshi | Mutanda | Tenke Fungurume"
+  },
+  {
+   "type": "applied_at",
+   "from": "Process:electrowinning",
+   "to": "NEW:Facility:Kansanshi",
+   "quote": "Площадка | OMG | Kansanshi | Mutanda | Tenke Fungurume"
+  },
+  {
+   "type": "uses_material",
+   "from": "Process:electrowinning",
+   "to": "Material:electrolyte",
+   "quote": "Поток электролита в и из каждой ванны, м3/мин | 0,3 | 0,32 | 0,27 | 0,28 | 0,29"
+  },
+  {
+   "type": "uses_material",
+   "from": "Process:electrowinning",
+   "to": "Material:sulfuric_acid",
+   "quote": "Содержание Cu, г/л | 39 | >36 | 42-43 | 42-43 | 50\nH2SO4, г/л | 190 | 170 – 200 | 180 | 180-185 | 157"
+  },
+  {
+   "type": "produces_output",
+   "from": "Process:electrowinning",
+   "to": "Material:copper",
+   "quote": "Этот анализ лег в основу данного обзора, в котором приведены показатели электроэкстракции с получением товарной меди различных предприятий по всему миру (таблица 3)."
+  },
+  {
+   "type": "uses_equipment",
+   "from": "Process:electrowinning",
+   "to": "Equipment:ew_cell",
+   "quote": "Анализ мировых эксплуатационных данных для Cu EW [2,3,4] также позволил определить диапазоны количества катодов на ванну для каждого уровня производства (Таблица 2)."
+  }
+ ],
+ "experts": [
+  {
+   "name": "Подоханова С.В.",
+   "affiliation": "Институт Гипроникель, отдел информационных исследований (ОИП), специалист 1 категории",
+   "expertise": [
+    "электроэкстракция меди",
+    "анализ мировых эксплуатационных данных tankhouse"
+   ]
+  },
+  {
+   "name": "Цымбулов Л.Б.",
+   "affiliation": "Институт Гипроникель, заведующий лабораторией пирометаллургии, д.т.н.",
+   "expertise": [
+    "пирометаллургия",
+    "металлургия никеля и меди"
+   ]
+  },
+  {
+   "name": "Кузнецов Р.А.",
+   "affiliation": "Институт Гипроникель, начальник ОИП",
+   "expertise": [
+    "информационно-аналитические исследования в цветной металлургии"
+   ]
+  }
+ ]
+}

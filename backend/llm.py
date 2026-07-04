@@ -34,14 +34,18 @@ def _load_env() -> dict:
 ENV = _load_env()
 API_KEY = ENV.get("YC_API_KEY", "")
 FOLDER = ENV.get("YC_FOLDER_ID", "")
+OPENROUTER_KEY = ENV.get("OPENROUTER_API_KEY", "").strip('"').strip("'")
 
 _LLM_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 _EMB_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/textEmbedding"
 _SEARCH_URL = "https://searchapi.api.cloud.yandex.net/v2/web/searchAsync"
 _OPER_URL = "https://operation.api.cloud.yandex.net/operations/"
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+_OPENROUTER_MODEL = "openai/gpt-4o-mini"
 
 _available: bool | None = None
 _last_probe = 0.0
+_active_provider = "none"  # "yandex" | "openrouter" | "none" — обновляется при первом complete()
 
 
 def _post(url: str, body: dict, timeout: int = 120) -> dict:
@@ -69,22 +73,60 @@ def yandex_available(force: bool = False) -> bool:
     return _available
 
 
-def complete(system: str, user: str, model: str = "yandexgpt",
-             temperature: float = 0.1, max_tokens: int = 4000) -> str | None:
-    """Возвращает текст или None, если LLM недоступна (офлайн-режим)."""
-    if not yandex_available():
+def _openrouter_complete(system: str, user: str, temperature: float, max_tokens: int) -> str | None:
+    if not OPENROUTER_KEY:
         return None
     try:
-        r = _post(_LLM_URL, {
-            "modelUri": f"gpt://{FOLDER}/{model}/latest",
-            "completionOptions": {"temperature": temperature, "maxTokens": max_tokens},
-            "messages": [
-                {"role": "system", "text": system},
-                {"role": "user", "text": user},
-            ]})
-        return r["result"]["alternatives"][0]["message"]["text"]
+        req = urllib.request.Request(
+            _OPENROUTER_URL,
+            data=json.dumps({
+                "model": _OPENROUTER_MODEL,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ]}).encode(),
+            headers={"Authorization": f"Bearer {OPENROUTER_KEY}",
+                     "Content-Type": "application/json"})
+        r = json.loads(urllib.request.urlopen(req, timeout=60).read())
+        return r["choices"][0]["message"]["content"]
     except Exception:
         return None
+
+
+def complete(system: str, user: str, model: str = "yandexgpt",
+             temperature: float = 0.1, max_tokens: int = 4000) -> str | None:
+    """Возвращает текст или None, если ни один провайдер не доступен (офлайн-режим).
+    Порядок: YandexGPT (ключ кейса) -> OpenRouter (fallback) -> None."""
+    global _active_provider
+    if yandex_available():
+        try:
+            r = _post(_LLM_URL, {
+                "modelUri": f"gpt://{FOLDER}/{model}/latest",
+                "completionOptions": {"temperature": temperature, "maxTokens": max_tokens},
+                "messages": [
+                    {"role": "system", "text": system},
+                    {"role": "user", "text": user},
+                ]})
+            _active_provider = "yandex"
+            return r["result"]["alternatives"][0]["message"]["text"]
+        except Exception:
+            pass
+    text = _openrouter_complete(system, user, temperature, max_tokens)
+    if text is not None:
+        _active_provider = "openrouter"
+        return text
+    _active_provider = "none"
+    return None
+
+
+def active_provider() -> str:
+    return _active_provider
+
+
+def any_llm_available() -> bool:
+    return yandex_available() or bool(OPENROUTER_KEY)
 
 
 def embed(text: str, kind: str = "doc") -> list[float] | None:
@@ -117,7 +159,7 @@ def search_web(query: str, timeout_s: int = 30) -> list[dict]:
                 raw = base64.b64decode(st["response"]["rawData"]).decode("utf-8", "ignore")
                 items = []
                 for m in _re.finditer(
-                        r"<doc>.*?<url>(.*?)</url>.*?<title>(.*?)</title>(.*?)</doc>",
+                        r"<doc[^>]*>.*?<url>(.*?)</url>.*?<title>(.*?)</title>(.*?)</doc>",
                         raw, _re.S):
                     url, title, rest = m.group(1), m.group(2), m.group(3)
                     sn = _re.search(r"<passage>(.*?)</passage>", rest, _re.S)

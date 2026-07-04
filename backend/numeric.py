@@ -122,6 +122,8 @@ class NumericFact:
     context: str        # окно ±120 символов
     start: int
     end: int
+    all_params: list = None  # все параметры-хинты в левом окне (для запросов вида
+                              # «сульфаты, хлориды, Ca, Mg, Na по 200-300 мг/л»)
 
     def to_dict(self):
         return asdict(self)
@@ -145,14 +147,23 @@ def extract_numeric_facts(text: str, window: int = 120) -> list[NumericFact]:
         if unit.lower() in ("года", "год", "лет") :
             continue  # даты не являются техническими ограничениями
 
-        # параметр = ближайшее к числу упоминание (максимальная позиция слева)
+        # параметр = ближайшее к числу упоминание (максимальная позиция слева);
+        # all_params — все хинты в окне (для перечислений «сульфаты, хлориды, Ca... по 200-300»)
         param, best_pos = "параметр", -1
+        all_params_found = []
         for name, p in PARAM_RES:
             last = None
             for pm in p.finditer(left):
                 last = pm
-            if last and last.end() > best_pos:
-                param, best_pos = name, last.end()
+            if last:
+                all_params_found.append((last.end(), name))
+                if last.end() > best_pos:
+                    param, best_pos = name, last.end()
+        all_params_found.sort(key=lambda t: -t[0])
+        seen_names = []
+        for _, name in all_params_found:
+            if name not in seen_names:
+                seen_names.append(name)
 
         # вещество: ближайшее слева (или сразу справа от числа)
         subst = ""
@@ -172,6 +183,7 @@ def extract_numeric_facts(text: str, window: int = 120) -> list[NumericFact]:
         facts.append(NumericFact(
             param=param, substance=subst, op=op,
             value=v1, value2=v2, unit=unit,
+            all_params=seen_names or [param],
             quote=text[start:end],
             context=ctx.strip(), start=start, end=end,
         ))
