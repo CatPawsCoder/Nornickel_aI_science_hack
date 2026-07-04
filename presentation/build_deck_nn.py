@@ -13,7 +13,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
 TPL = r"C:\Users\Asus ROG\Downloads\Норникель 2026.pptx"
-OUT = r"C:\Users\Asus ROG\nauchny-klubok\presentation\nauchny-klubok-NN.pptx"
+OUT = r"C:\Users\Asus ROG\nauchny-klubok\presentation\nauchny-klubok-NN-v2.pptx"
 
 VIOLET = RGBColor(0x53, 0x02, 0xE0)
 MINT = RGBColor(0x00, 0xFF, 0xBF)
@@ -138,15 +138,26 @@ delete_shape(s.shapes[5])
 delete_shape(s.shapes[4])
 title_box = s.shapes[1]
 title_box.width = Inches(5.8)  # чтобы заголовок не тянулся под правый край карточки
+title_box.height = Inches(0.55)
 set_text(title_box, [("МАСШТАБ НА ПОЛНОМ КОРПУСЕ", {"size": 27, "bold": True, "color": DARK})])
-set_text(s.shapes[2], [("4.7 ГБ архива обработано полностью, без пропусков",
-                        {"size": 16, "bold": True, "color": VIOLET})])
-set_text(s.shapes[3], [
-    "2 090 документов (PDF/DOCX/PPTX/XLS + OCR сканов)   •   292 155 уникальных",
-    "числовых условий (100% верифицированы, дубли — в occurrences)",
-    "665 LLM-утверждений с дословными цитатами   •   3 000 рёбер противоречий",
-    "34 эксперта   •   ответ на сложный запрос — 2–3 секунды",
-], size=14, color=GREY)
+# подзаголовок ниже заголовка с воздухом
+sub_box = s.shapes[2]
+sub_box.top = Inches(2.1)
+set_text(sub_box, [("4.7 ГБ архива обработано полностью, без пропусков",
+                    {"size": 15, "bold": True, "color": VIOLET})])
+# список — по одному пункту на строку, содержательнее про модель и граф
+body_box = s.shapes[3]
+body_box.top = Inches(2.6)
+body_box.height = Inches(2.4)
+set_text(body_box, [
+    "• 2 090 документов: PDF, DOCX, PPTX, XLS + OCR сканов на GPU",
+    "• 292 155 числовых условий — каждое дословно найдено в источнике (string-match)",
+    "• 665 утверждений: LLM извлекает по строгой JSON-схеме, цитаты верифицируются",
+    "• Граф Kùzu: 8 типов узлов, 19 типов рёбер, обход 3–4 уровней связей < 0.2 c",
+    "• 3 000 рёбер «источники противоречат» + автопоиск пробелов в знаниях",
+    "• Тезаурус RU/EN: 88 канонов, 400+ синонимов («электроэкстракция» = «electrowinning»)",
+    "• Ответ на многопараметрический запрос — 2–3 секунды",
+], size=12.5, color=GREY, spacing=1.25)
 
 # ============ S6 — ДЕМО (две карточки) ============
 s = S[5]
@@ -196,11 +207,10 @@ add_box(s, 0.3, 1.2, 8.3, 0.9, [("РАЗВЁРНУТО И МАСШТАБИРУЕ
 add_box(s, 0.3, 2.0, 8.3, 0.5, [("Живое демо: catpawws-ai-science-hack.hf.space",
                                  {"size": 17, "bold": True, "color": VIOLET})])
 add_box(s, 0.3, 2.7, 9.2, 2.6, [
-    "• Docker/Compose: жюри достаточно docker compose up (данные докачиваются сами)",
+    "• Развёртывание одной командой: docker compose up, данные подтягиваются автоматически",
     "• Лайт-режим: SQLite FTS5 — рантайм < 1 ГБ RAM, без GPU (GPU нужен только сборке)",
-    "• Влезает в стенд проверки с запасом: 12 ядер / 32 ГБ / без GPU",
     "• Новый домен = новые записи тезауруса, онтология не меняется",
-    "• 3 LLM-провайдера с автопереключением: YandexGPT → OpenRouter → GigaChat",
+    "• 3 LLM-провайдера с автопереключением: YandexGPT → GigaChat → DeepSeek (open-weights)",
     "• FAIR: каждый факт находим, доступен по REST, сериализуем в RDF, переиспользуем",
 ], size=14, color=GREY)
 
