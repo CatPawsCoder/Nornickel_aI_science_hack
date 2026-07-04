@@ -10,3 +10,4 @@ data/kg.kuzu.wal
 data/server.log
 data/ingest.log
 *.log
+presentation/*.pdf
