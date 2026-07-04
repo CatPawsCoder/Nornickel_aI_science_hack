@@ -280,6 +280,27 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
     # 4. числовые условия из графа, пересекающиеся с ограничениями запроса.
     #    Для многопараметрических запросов считаем СТРОГОЕ соответствие:
     #    пересечение множеств документов, удовлетворяющих КАЖДОМУ условию
+    # перечисление «сульфаты И хлориды 200-300 мг/л» — это ДВА отдельных
+    # ограничения (AND), а не альтернативы одного: разворачиваем каждый
+    # параметр перечисления в самостоятельное условие со своим docset
+    expanded_numeric = []
+    for want in parsed["numeric"]:
+        aps = want.get("all_params") or [want["param"]]
+        # зонтичные слова («концентрация» от «вода содержит») не считаются
+        # отдельным условием, когда рядом перечислены конкретные вещества
+        specific = [p for p in aps if p not in ("концентрация", "параметр")]
+        if specific:
+            aps = specific
+        if len(aps) > 1:
+            for pname in aps:
+                w = dict(want)
+                w["param"] = pname
+                w["all_params"] = [pname]
+                expanded_numeric.append(w)
+        else:
+            expanded_numeric.append(want)
+    parsed["numeric"] = expanded_numeric
+
     matched_conditions = []
     constraint_docsets: list[set] = []
     if conn is not None and parsed["numeric"]:
