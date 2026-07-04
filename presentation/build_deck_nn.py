@@ -137,12 +137,13 @@ s = S[4]
 delete_shape(s.shapes[5])
 delete_shape(s.shapes[4])
 title_box = s.shapes[1]
-title_box.width = Inches(5.8)  # чтобы заголовок не тянулся под правый край карточки
-title_box.height = Inches(0.55)
-set_text(title_box, [("МАСШТАБ НА ПОЛНОМ КОРПУСЕ", {"size": 27, "bold": True, "color": DARK})])
-# подзаголовок ниже заголовка с воздухом
+title_box.width = Inches(8.6)   # бейджей справа больше нет — заголовку можно всю ширину
+title_box.height = Inches(0.5)
+title_box.top = Inches(1.35)
+set_text(title_box, [("МАСШТАБ НА ПОЛНОМ КОРПУСЕ", {"size": 24, "bold": True, "color": DARK})])
+# подзаголовок ниже заголовка с запасом (шрифт-замена в PowerPoint шире растровой)
 sub_box = s.shapes[2]
-sub_box.top = Inches(2.1)
+sub_box.top = Inches(2.05)
 set_text(sub_box, [("4.7 ГБ архива обработано полностью, без пропусков",
                     {"size": 15, "bold": True, "color": VIOLET})])
 # список — по одному пункту на строку, содержательнее про модель и граф
