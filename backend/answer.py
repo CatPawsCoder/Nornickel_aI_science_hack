@@ -111,6 +111,28 @@ def _direct_answer(question: str, claims: list, conds: list,
     return None
 
 
+# география/организации, ошибочно похожие на «Фамилия (год)»
+_NOT_PERSON = {"России", "Россия", "ЮАР", "США", "Ботсвана", "Иран", "Сербия",
+               "Чили", "Финляндия", "Норвегия", "Япония", "Китай", "Замбия",
+               "Конго", "Канада", "Австралия", "Казахстан", "Швеция", "Польша"}
+_CITED_RE = _re.compile(
+    r"([А-ЯЁ][а-яё]{2,}|[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{1,}\.?)?)"
+    r"(?:\s+(?:и|et)\s+(?:др|al)\.?)?\s*\(((?:19|20)\d{2})\)")
+
+
+def _cited_researchers(claims: list) -> list[str]:
+    """Имена исследователей вида «Фамилия (год)» из текстов топ-утверждений.
+    Это библиографический слой источников (не узлы Expert графа)."""
+    seen, out = set(), []
+    for c in claims:
+        for name, year in _CITED_RE.findall(c.get("text", "") or ""):
+            if name in _NOT_PERSON or name in seen:
+                continue
+            seen.add(name)
+            out.append(f"{name} ({year})")
+    return out
+
+
 def synthesize(result: dict, docs_meta: dict) -> dict:
     p = result["parsed"]
     md = []
@@ -219,11 +241,15 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
 
     # --- 4б. эксперты и носители компетенций (требование ТЗ) ---
     experts = result.get("experts") or []
-    if experts:
+    cited = _cited_researchers(result.get("claims", [])[:12])
+    if experts or cited:
         md.append("## 👥 Эксперты и носители компетенций по теме\n")
         for ex in experts[:8]:
             aff = f" — {ex['aff']}" if ex.get("aff") else ""
             md.append(f"- **{ex['name']}**{aff}  \n  <sub>{ex.get('via','')}</sub>")
+        if cited:
+            md.append(f"\n*Цитируемые в источниках исследователи (из текстов утверждений): "
+                      f"{', '.join(cited[:10])}.*")
         md.append("")
 
     # --- 5. консенсус / разногласия ---
