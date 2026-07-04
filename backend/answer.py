@@ -94,6 +94,8 @@ def _direct_answer(question: str, claims: list, conds: list,
                   f"ближайшие данные — {span} гг.:\n\n")
 
     intent_note = ""
+    # missing_intent уже очищен от генерик-слов в search.py: непустой список
+    # означает, что тематических терминов вопроса нет НИ В ОДНОМ утверждении
     if missing_intent:
         terms = ", ".join(f"«{t}»" for t in missing_intent[:4])
         intent_note = (f" ВАЖНО: по ключевым терминам вопроса ({terms}) в базе знаний НЕТ "
