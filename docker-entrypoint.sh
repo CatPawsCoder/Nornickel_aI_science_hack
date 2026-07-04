@@ -4,7 +4,10 @@
 # архива данных кейса и ~10 минут CPU).
 set -e
 
-if [ ! -d "data/kg.kuzu" ] || [ ! -f "data/cache/bm25.pkl" ]; then
+have_index=0
+[ -f "data/cache/fts.db" ] && have_index=1
+[ -f "data/cache/bm25.pkl" ] && have_index=1
+if [ ! -f "data/kg.kuzu" ] || [ "$have_index" = "0" ]; then
     if [ -z "$DATA_BUNDLE_URL" ]; then
         echo "ОШИБКА: данные не найдены и DATA_BUNDLE_URL не задан."
         echo "Укажите в docker-compose.yml переменную DATA_BUNDLE_URL —"

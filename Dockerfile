@@ -18,7 +18,9 @@ COPY docker-entrypoint.sh .
 RUN chmod +x docker-entrypoint.sh && mkdir -p data/cache
 
 EXPOSE 8017
-ENV PYTHONUNBUFFERED=1
+# лайт-режим по умолчанию: SQLite FTS5 из бандла, <1ГБ RAM, без pickle
+ENV PYTHONUNBUFFERED=1 \
+    KLUBOK_LIGHT=1
 
 # entrypoint: докачивает предсобранные данные (граф + индекс), затем uvicorn
 ENTRYPOINT ["./docker-entrypoint.sh"]
