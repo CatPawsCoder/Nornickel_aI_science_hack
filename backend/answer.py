@@ -125,7 +125,9 @@ def _direct_answer(question: str, claims: list, conds: list,
     facts_blob = "\n".join(
         f"- ({c['year'] or 'н/д'}, {GEO_TAG.get(c.get('geo') or '', '—')}"
         f"{', ВНЕ запрошенного периода' if out_used and c in top_out else ''}) "
-        f"{c['text'][:260]} [узел {c['id']}]" for c in top)
+        f"Тезис: {c['text'][:260]} "
+        f"Цитата-основание: «{(c.get('quote') or '')[:260]}» [узел {c['id']}]"
+        for c in top)
     cond_blob = "\n".join(f"- {c['param']}: {c['op']} {c['value']:g} {c['unit']} "
                           f"(цитата: «{c['quote']}»)" for c in conds[:5])
     allowed_numbers = _numbers_of(facts_blob + " " + cond_blob + " " + chunk_blob)
@@ -137,6 +139,41 @@ def _direct_answer(question: str, claims: list, conds: list,
         prefix = (f"⚠️ В корпусе нет публикаций по теме {period_note}; "
                   f"ближайшие данные — {span} гг.:\n\n")
 
+    def extractive_fallback(*, adjacent: bool = False) -> str | None:
+        """Безопасный откат без второго LLM-вызова.
+
+        Не схлопываем обзор до одного top[0]: показываем несколько
+        верхних тезисов дословно, с источником и узлом. При пробеле
+        корпуса явно отделяем смежные факты от прямого ответа.
+        """
+        if not top:
+            return None
+        limit = 5 if is_review else 4
+        selected, seen = [], set()
+        for c in top:
+            key = (c.get("text") or "").strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            selected.append(c)
+            if len(selected) >= limit:
+                break
+        if not selected:
+            return None
+        if adjacent:
+            terms = ", ".join(f"«{t}»" for t in (missing_intent or [])[:3])
+            head = (f"В корпусе не найдены прямые сведения по теме {terms}.\n\n"
+                    "**Смежные материалы (не являются прямым ответом):**")
+        else:
+            head = "**Подтверждённые факты из корпуса:**"
+        lines = [head]
+        for c in selected:
+            lines.append(
+                f"- {c['text']}  \n"
+                f"  <sub>источник: *{c['title'][:80]}* "
+                f"({c['year'] or 'н/д'}) · узел `{c['id']}`</sub>")
+        return prefix + "\n".join(lines)
+
     # фраза «в базе нет данных» из прямого ответа УБРАНА по фидбеку:
     # ответ всегда начинается с содержания; честный сигнал об отсутствующей
     # теме показывается отдельной строкой в блоке «Как система поняла запрос»
@@ -146,6 +183,10 @@ def _direct_answer(question: str, claims: list, conds: list,
         intent_note = (f" Примечание: тема ({terms}) в базе утверждений не представлена — "
                        f"отвечай по имеющимся смежным фактам, представляя их именно как "
                        f"смежные, без фразы «данных нет» в начале.")
+        # Не разрешаем LLM оформить очистку как «закачку» или
+        # другую смежную тему как прямой ответ. Это заодно убирает
+        # лишнюю сетевую латентность для известного пробела корпуса.
+        return extractive_fallback(adjacent=True)
     compare_note = ""
     if geo_mode == "compare":
         compare_note = (" Вопрос сравнивает отечественную и зарубежную практику: структурируй "
@@ -183,26 +224,9 @@ def _direct_answer(question: str, claims: list, conds: list,
 
     if llm_ans and _valid(llm_ans):
         return prefix + llm_ans.strip()
-    if llm_ans:
-        # одна повторная попытка с указанием на нарушение правила веществ
-        retry = llm.complete(
-            "Предыдущий вариант ответа нарушил правило: в отрицательных утверждениях "
-            "перечислялись вещества, которых нет в исходном факте. Перепиши ответ, "
-            "строго соблюдая: в предложениях вида «не подходит / не удаляет» называй "
-            "ТОЛЬКО вещества, дословно указанные в факте с тем же [узел ...]. "
-            "Остальные правила прежние: только приведённые факты, числа дословно, "
-            "ссылки [узел <id>].",
-            f"Вопрос: {question}\n\nФакты:\n{facts_blob}\n{cond_blob}\n\n"
-            f"Отклонённый вариант:\n{llm_ans}",
-            temperature=0.0, max_tokens=650)
-        if retry and _valid(retry):
-            return prefix + retry.strip()
-    # детерминированный откат: самое релевантное утверждение дословно
-    if top:
-        c = top[0]
-        return (f"{prefix}{c['text']}\n\n<sub>источник: *{c['title'][:80]}* ({c['year'] or 'н/д'}) · "
-                f"узел `{c['id']}`</sub>")
-    return None
+    # Без повторного LLM-вызова: если синтез отклонён, отдаём
+    # несколько дословных тезисов. Это и быстрее, и полнее старого top[0].
+    return extractive_fallback()
 
 
 # география/организации, ошибочно похожие на «Фамилия (год)»
