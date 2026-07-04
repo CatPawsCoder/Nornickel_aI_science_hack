@@ -131,20 +131,25 @@ function initCy(elements) {
       { selector: 'node', style: {
           'background-color': e => COLORS[e.data('type')] || '#888',
           'label': 'data(label)', 'color': '#e8ecf4', 'font-size': 9,
-          'text-wrap': 'wrap', 'text-max-width': 90, 'text-valign': 'bottom',
+          'text-wrap': 'wrap', 'text-max-width': 84, 'text-valign': 'bottom',
           'text-margin-y': 4, 'width': e => e.data('type')==='publication' ? 26 : 18,
           'height': e => e.data('type')==='publication' ? 26 : 18,
           'border-width': 1, 'border-color': '#2a3550' } },
+      // утверждения и условия: без подписи (текст — по клику в карточке),
+      // маленькие точки-спутники вокруг своей публикации
+      { selector: 'node[type="claim"], node[type="condition"]', style: {
+          'label': '', 'width': 11, 'height': 11, 'opacity': 0.9 } },
       { selector: 'edge', style: {
           'width': 1, 'line-color': '#39466b', 'curve-style': 'bezier',
-          'label': 'data(label)', 'font-size': 7, 'color': '#8b96ab',
-          'target-arrow-shape': 'triangle', 'target-arrow-color': '#39466b',
-          'arrow-scale': .7 } },
+          'label': '', 'target-arrow-shape': 'triangle',
+          'target-arrow-color': '#39466b', 'arrow-scale': .6, 'opacity': .7 } },
       { selector: 'edge[kind="contradicts"]', style: {
           'width': 2, 'line-color': '#ff6b6b', 'line-style': 'dashed',
-          'color': '#ff6b6b', 'target-arrow-shape': 'none' } },
+          'opacity': 1, 'target-arrow-shape': 'none' } },
+      { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#4da3ff' } },
     ],
-    layout: { name: 'cose', animate: false, nodeRepulsion: 9000, idealEdgeLength: 80 },
+    layout: { name: 'cose', animate: false, nodeRepulsion: 16000,
+              idealEdgeLength: 70, gravity: 60, padding: 20 },
     wheelSensitivity: .25,
   });
   const esc = s => String(s ?? '').replace(/[&<>"']/g,
@@ -152,7 +157,7 @@ function initCy(elements) {
   cy.on('tap', 'node', async ev => {
     const d = ev.target.data();
     const el = document.getElementById('detail');
-    let html = `<h3>${esc(d.label)}</h3><p>тип: ${esc(d.type)}</p>`;
+    let html = `<h3>${esc(d.full || d.label)}</h3><p>тип: ${esc(d.type)}</p>`;
     if (d.quote) html += `<p style="color:#ffb347">«${esc(d.quote)}»</p>`;
     if (d.confidence) html += `<p>достоверность: ${esc(d.confidence)}</p>`;
     if (d.doc_id) {

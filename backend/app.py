@@ -184,13 +184,19 @@ def build_subgraph(result: dict) -> dict:
                 f"RETURN r.count AS c", {"pid": pub["id"], "eid": e["id"]})
             if rows:
                 add_edge(f"Pub:{pub['id']}", f"{e['type']}:{e['id']}", "упоминает")
+    # условия показываем ТОЛЬКО связанные с видимой публикацией:
+    # висящие узлы-сироты складывались в уродливую сетку внизу графа
     cond_node_ids = {}
-    for c in result["conditions"][:15]:
+    for c in result["conditions"]:
+        if len(cond_node_ids) >= 10:
+            break
+        if f"Pub:{c['doc_id']}" not in seen:
+            continue
         cid = f"Cond:{c['id']}"
         cond_node_ids[c["id"]] = cid
         add_node(cid, f"{c['param']} {c['op']} {c['value']:g} {c['unit']}", "condition",
                  quote=c["quote"], doc_id=c["doc_id"])
-        add_edge(f"Pub:{c['doc_id']}", cid, "условие") if f"Pub:{c['doc_id']}" in seen else None
+        add_edge(f"Pub:{c['doc_id']}", cid, "условие")
     # красные рёбра противоречий между показанными условиями
     if cond_node_ids:
         ids = list(cond_node_ids.keys())
@@ -205,12 +211,17 @@ def build_subgraph(result: dict) -> dict:
                 edges.append({"data": {"id": eid, "source": cond_node_ids[r["a"]],
                                        "target": cond_node_ids[r["b"]],
                                        "label": "противоречит", "kind": "contradicts"}})
-    for cl in result["claims"][:20]:
+    shown_claims = 0
+    for cl in result["claims"]:
+        if shown_claims >= 10:
+            break
+        if f"Pub:{cl['doc_id']}" not in seen:
+            continue  # сироты не рисуем
         nid = f"Claim:{cl['id']}"
-        add_node(nid, cl["text"][:60], "claim", confidence=cl.get("confidence", ""),
-                 doc_id=cl["doc_id"], quote=cl.get("quote", ""))
-        if f"Pub:{cl['doc_id']}" in seen:
-            add_edge(f"Pub:{cl['doc_id']}", nid, "утверждает")
+        add_node(nid, cl["text"][:50], "claim", confidence=cl.get("confidence", ""),
+                 doc_id=cl["doc_id"], quote=cl.get("quote", ""), full=cl["text"][:220])
+        add_edge(f"Pub:{cl['doc_id']}", nid, "утверждает")
+        shown_claims += 1
     # эксперты по теме — требование ТЗ «показ связанных экспертов»
     for ex in (result.get("experts") or [])[:6]:
         nid = f"Expert:{ex['id']}"
