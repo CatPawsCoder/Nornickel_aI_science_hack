@@ -58,7 +58,35 @@ def main():
     print(f"entities {time.time()-t0:.1f}s", flush=True)
 
     docs = [json.loads(l) for l in open(os.path.join(CACHE, "docs.jsonl"), encoding="utf-8")]
-    print(f"docs: {len(docs)}", flush=True)
+    print(f"docs (до дедупа): {len(docs)}", flush=True)
+
+    # --- дедупликация по содержимому: один файл мог попасть в базу дважды
+    # (старый ингест «Обзоров» + полный корпус). Оставляем один экземпляр,
+    # предпочитая тот, у которого есть LLM-извлечения (claims). ---
+    import hashlib as _hl
+    extracted_ids = {fn[:-5] for fn in os.listdir(os.path.join(CACHE, "extracted"))
+                     if fn.endswith(".json")} if os.path.isdir(os.path.join(CACHE, "extracted")) else set()
+    by_hash: dict = {}
+    for d in docs:
+        try:
+            with open(os.path.join(ROOT, d["text_path"]), "rb") as f:
+                h = _hl.md5(f.read()).hexdigest()
+        except Exception:
+            h = "err_" + d["id"]
+        by_hash.setdefault(h, []).append(d)
+    keep, dropped = [], 0
+    for h, group in by_hash.items():
+        if len(group) == 1:
+            keep.append(group[0])
+            continue
+        # приоритет: документ с извлечениями > первый по порядку
+        group.sort(key=lambda d: (d["id"] not in extracted_ids,))
+        keep.append(group[0])
+        dropped += len(group) - 1
+    docs = keep
+    with open(os.path.join(CACHE, "keep_docs.json"), "w", encoding="utf-8") as f:
+        json.dump(sorted(d["id"] for d in docs), f)
+    print(f"docs (после дедупа): {len(docs)}  (дублей отброшено: {dropped})", flush=True)
 
     pub_rows = []
     for d in docs:

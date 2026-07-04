@@ -6,6 +6,7 @@
 <title>Научный клубок — карта знаний R&D</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 <style>
   :root {
     --bg: #0f1420; --panel: #171e2e; --panel2: #1d2639; --text: #e8ecf4;
@@ -144,21 +145,23 @@ function initCy(elements) {
     layout: { name: 'cose', animate: false, nodeRepulsion: 9000, idealEdgeLength: 80 },
     wheelSensitivity: .25,
   });
+  const esc = s => String(s ?? '').replace(/[&<>"']/g,
+      ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   cy.on('tap', 'node', async ev => {
     const d = ev.target.data();
     const el = document.getElementById('detail');
-    let html = `<h3>${d.label}</h3><p>тип: ${d.type}</p>`;
-    if (d.quote) html += `<p style="color:#ffb347">«${d.quote}»</p>`;
-    if (d.confidence) html += `<p>достоверность: ${d.confidence}</p>`;
+    let html = `<h3>${esc(d.label)}</h3><p>тип: ${esc(d.type)}</p>`;
+    if (d.quote) html += `<p style="color:#ffb347">«${esc(d.quote)}»</p>`;
+    if (d.confidence) html += `<p>достоверность: ${esc(d.confidence)}</p>`;
     if (d.doc_id) {
-      const r = await fetch('/api/doc/' + d.doc_id).then(r => r.json());
+      const r = await fetch('/api/doc/' + encodeURIComponent(d.doc_id)).then(r => r.json());
       if (r.doc) {
-        html += `<p><b>${r.doc.title}</b> (${r.doc.year||'н/д'})<br>файл: ${r.doc.filename}</p>`;
+        html += `<p><b>${esc(r.doc.title)}</b> (${esc(r.doc.year)||'н/д'})<br>файл: ${esc(r.doc.filename)}</p>`;
         if (r.claims.length) html += '<p><b>Утверждения:</b></p>' +
-          r.claims.slice(0,5).map(c => `<p>• ${c.text}</p>`).join('');
+          r.claims.slice(0,5).map(c => `<p>• ${esc(c.text)}</p>`).join('');
       }
     }
-    el.innerHTML = html + '<p style="text-align:right"><a href="#" onclick="this.closest(\'#detail\').style.display=\'none\';return false" style="color:#4da3ff">закрыть</a></p>';
+    el.innerHTML = DOMPurify.sanitize(html) + '<p style="text-align:right"><a href="#" onclick="this.closest(\'#detail\').style.display=\'none\';return false" style="color:#4da3ff">закрыть</a></p>';
     el.style.display = 'block';
   });
   cy.on('tap', ev => { if (ev.target === cy) document.getElementById('detail').style.display = 'none'; });
@@ -178,7 +181,8 @@ async function ask() {
   try {
     const r = await fetch('/api/query', { method: 'POST',
       headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) }).then(r => r.json());
-    ansEl.innerHTML = marked.parse(r.answer.markdown);
+    // санитизация: контент приходит из корпуса документов и LLM — режем любой HTML/JS
+    ansEl.innerHTML = DOMPurify.sanitize(marked.parse(r.answer.markdown));
     if (r.graph.nodes.length) initCy([...r.graph.nodes, ...r.graph.edges]);
   } catch (e) { ansEl.innerHTML = '<div class="spin">Ошибка: ' + e + '</div>'; }
 }

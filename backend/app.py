@@ -62,8 +62,15 @@ async def audit_middleware(request: Request, call_next):
 
 
 @app.get("/api/audit")
-def api_audit(limit: int = 50):
-    """Последние записи аудита (в проде — только для роли администратора)."""
+def api_audit(request: Request, limit: int = 50):
+    """Записи аудита — только для роли администратора (токен в env KLUBOK_ADMIN_TOKEN).
+    Без настроенного токена endpoint выключен: лог содержит IP и тексты запросов."""
+    admin_token = os.environ.get("KLUBOK_ADMIN_TOKEN", "")
+    provided = request.headers.get("X-Admin-Token", "")
+    if not admin_token or provided != admin_token:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "forbidden: требуется X-Admin-Token администратора"},
+                            status_code=403)
     if not os.path.exists(AUDIT_LOG):
         return {"records": []}
     lines = open(AUDIT_LOG, encoding="utf-8").read().strip().splitlines()
@@ -87,13 +94,22 @@ class Query(BaseModel):
 def api_query(body: Query):
     text = body.text
     result = search(text, idx, conn)
-    # UI-фильтры поверх парсера
-    if body.geo in ("ru", "foreign"):
-        result["publications"] = [p for p in result["publications"]
-                                  if p["geo_hint"] in (body.geo, "mixed")]
-    if body.year_from:
-        result["publications"] = [p for p in result["publications"]
-                                  if not p["year"] or p["year"] >= body.year_from]
+
+    # UI-фильтры применяются КО ВСЕМ слоям ответа: публикации, утверждения, условия
+    def doc_passes(doc_id: str) -> bool:
+        d = DOCS.get(doc_id)
+        if d is None:
+            return False
+        if body.geo in ("ru", "foreign") and d["geo_hint"] not in (body.geo, "mixed"):
+            return False
+        if body.year_from and d["year"] and d["year"] < body.year_from:
+            return False
+        return True
+
+    if body.geo in ("ru", "foreign") or body.year_from:
+        result["publications"] = [p for p in result["publications"] if doc_passes(p["id"])]
+        result["claims"] = [c for c in result["claims"] if doc_passes(c["doc_id"])]
+        result["conditions"] = [c for c in result["conditions"] if doc_passes(c["doc_id"])]
     if body.confidence:
         order = {"high": 3, "medium": 2, "low": 1}
         need = order.get(body.confidence, 1)

@@ -44,9 +44,23 @@ def parse_entity_ref(ref: str) -> tuple[str, str] | None:
 
 def main() -> None:
     conn = open_db()
+    # миграция схемы для уже существующей базы (свежая создаётся сразу с колонками)
+    for col, ctype in (("quote", "STRING"), ("verified", "BOOLEAN")):
+        try:
+            conn.execute(f"ALTER TABLE Claim ADD {col} {ctype}")
+        except Exception:
+            pass
     docs = {json.loads(l)["id"]: json.loads(l)
             for l in open(os.path.join(CACHE, "docs.jsonl"), encoding="utf-8")}
     now = datetime.date.today().isoformat()
+
+    # versioning-lite: существующие утверждения по документам (для пометки superseded)
+    existing = {}
+    try:
+        for r in gq(conn, "MATCH (c:Claim) RETURN c.id AS id, c.doc_id AS d, c.text AS t"):
+            existing.setdefault(r["d"], {})[norm_space(r["t"]).lower()[:150]] = r["id"]
+    except Exception:
+        pass
 
     n_claims = n_rel = n_exp = n_quote_fail = 0
     files = glob.glob(os.path.join(EXTRACTED, "*.json"))
@@ -68,10 +82,18 @@ def main() -> None:
                 conf = "low"
             conn.execute(
                 "MERGE (c:Claim {id:$id}) SET c.text=$t, c.confidence=$conf, "
-                "c.doc_id=$d, c.year=$y, c.status=$st, c.superseded_by='', c.created_at=$now",
+                "c.doc_id=$d, c.year=$y, c.status=$st, c.superseded_by='', c.created_at=$now, "
+                "c.quote=$q, c.verified=$v",
                 {"id": cl["id"], "t": cl["text"], "conf": conf, "d": doc_id,
                  "y": d["year"] or 0, "st": "active" if verified else "unverified_quote",
-                 "now": now})
+                 "now": now, "q": (cl.get("quote") or "")[:300], "v": verified})
+            # versioning-lite: то же утверждение под другим id -> старое помечаем superseded
+            key = norm_space(cl["text"]).lower()[:150]
+            old_id = existing.get(doc_id, {}).get(key)
+            if old_id and old_id != cl["id"]:
+                conn.execute(
+                    "MATCH (o:Claim {id:$oid}) SET o.status='superseded', o.superseded_by=$nid",
+                    {"oid": old_id, "nid": cl["id"]})
             conn.execute(
                 "MATCH (p:Publication {id:$p}), (c:Claim {id:$c}) MERGE (p)-[:STATES]->(c)",
                 {"p": doc_id, "c": cl["id"]})
@@ -108,7 +130,9 @@ def main() -> None:
             name = e.get("name", "").strip()
             if not name:
                 continue
-            eid = "exp_" + str(abs(hash(name)) % 10**10)
+            # стабильный ID: python hash() рандомизирован между запусками -> md5
+            import hashlib
+            eid = "exp_" + hashlib.md5(name.lower().encode("utf-8")).hexdigest()[:10]
             conn.execute("MERGE (x:Expert {id:$id}) SET x.name=$n, x.affiliation=$a",
                          {"id": eid, "n": name, "a": e.get("affiliation", "")})
             conn.execute("MATCH (x:Expert {id:$id}), (p:Publication {id:$p}) "

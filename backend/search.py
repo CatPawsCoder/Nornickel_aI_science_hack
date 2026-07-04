@@ -33,8 +33,9 @@ CURRENT_YEAR = 2026
 _WORD = re.compile(r"[а-яёa-z0-9]+", re.I)
 
 # лёгкий русский стеммер: срезаем частотные окончания (для BM25 достаточно)
-_SUFFIXES = ("иями", "ями", "ами", "иях", "ях", "ах", "ией", "ей", "ой", "ий",
-             "ый", "ая", "яя", "ое", "ее", "ия", "ья", "ии", "ов", "ев", "ам",
+_SUFFIXES = ("иями", "ями", "ами", "ыми", "ими", "ого", "его", "ому", "ему",
+             "иях", "ях", "ах", "ией", "ей", "ой", "ий",
+             "ый", "ая", "яя", "ое", "ее", "ые", "ие", "ия", "ья", "ии", "ов", "ев", "ам",
              "ям", "ом", "ем", "ум", "ую", "юю", "ых", "их", "ет", "ит", "ут",
              "ют", "ат", "ят", "а", "я", "о", "е", "и", "ы", "у", "ю", "ь")
 
@@ -50,15 +51,27 @@ def tokenize(text: str) -> list[str]:
     return [_stem(w.lower()) for w in _WORD.findall(text)]
 
 
+# частотные слова запросов, не несущие смысла для поиска (после стемминга)
+STOPWORDS = {
+    "как", "какие", "какой", "котор", "что", "чтоб", "для", "при", "это", "этот",
+    "того", "этого", "можно", "нужн", "существ", "известн", "или", "под", "над",
+    "все", "если", "куда", "где", "быть", "есть", "также", "быле", "может",
+}
+
+
 def _load_docs() -> dict:
     docs = [json.loads(l) for l in open(os.path.join(CACHE, "docs.jsonl"), encoding="utf-8")]
+    keep_p = os.path.join(CACHE, "keep_docs.json")
+    if os.path.exists(keep_p):
+        keep = set(json.load(open(keep_p, encoding="utf-8")))
+        docs = [d for d in docs if d["id"] in keep]
     return {d["id"]: d for d in docs}
 
 
 def fts_query(query: str, top: int = 240) -> list[tuple[str, float, str]]:
     """Лайт-поиск: [(doc_id, score, chunk_text)] из SQLite FTS5 (bm25-ранжирование)."""
     import sqlite3
-    toks = [t for t in tokenize(query) if len(t) > 1]
+    toks = [t for t in tokenize(query) if len(t) > 1 and t not in STOPWORDS]
     if not toks:
         return []
     match = " OR ".join('"' + t.replace('"', "") + '"' for t in toks[:30])
@@ -81,7 +94,7 @@ def fts_query(query: str, top: int = 240) -> list[tuple[str, float, str]]:
 
 def build_index() -> dict:
     from rank_bm25 import BM25Okapi
-    docs = [json.loads(l) for l in open(os.path.join(CACHE, "docs.jsonl"), encoding="utf-8")]
+    docs = list(_load_docs().values())
     chunks, meta = [], []
     for d in docs:
         text = open(os.path.join(ROOT, d["text_path"]), encoding="utf-8").read()
@@ -251,24 +264,16 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
             return False
         return True
 
-    # дедуп: один и тот же файл мог попасть в базу дважды (из «Обзоров» и из
-    # полного корпуса с hash-суффиксом) — оставляем более релевантный экземпляр
-    ranked, seen_titles = [], set()
-    for did in sorted(doc_score, key=lambda k: -doc_score[k]):
-        if not passes(did):
-            continue
-        base = re.sub(r"_[0-9a-f]{8}$", "", docs[did]["title"]).lower().strip()
-        if base in seen_titles:
-            continue
-        seen_titles.add(base)
-        ranked.append(did)
-
-    # 4. числовые условия из графа, пересекающиеся с ограничениями запроса
+    # 4. числовые условия из графа, пересекающиеся с ограничениями запроса.
+    #    Для многопараметрических запросов считаем СТРОГОЕ соответствие:
+    #    пересечение множеств документов, удовлетворяющих КАЖДОМУ условию
     matched_conditions = []
+    constraint_docsets: list[set] = []
     if conn is not None and parsed["numeric"]:
         for want in parsed["numeric"]:
             params_to_try = want.get("all_params") or [want["param"]]
             seen_ids = set()
+            docset: set = set()
             for param_name in params_to_try:
                 rows = gq(conn,
                     "MATCH (p:Publication)-[:HAS_CONDITION]->(c:Condition) "
@@ -284,8 +289,30 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                     r2["value2"] = None if r2["value2"] == -1.0 else r2["value2"]
                     if _cond_matches(r2, want) and passes(r2["doc_id"]):
                         seen_ids.add(r["id"])
+                        docset.add(r2["doc_id"])
                         r2["query_constraint"] = f"{want['param']} {want['op']} {want['value']}{'-' + str(want['value2']) if want.get('value2') else ''} {want['unit']}"
                         matched_conditions.append(r2)
+            constraint_docsets.append(docset)
+
+    # строгое AND: документы, покрывающие все числовые условия сразу
+    strict_docs: set = set.intersection(*constraint_docsets) if len(constraint_docsets) >= 2 else set()
+    if strict_docs:
+        for did in strict_docs:
+            doc_score[did] = doc_score.get(did, 0.0) + 1000.0  # такие документы — всегда наверху
+        # условия из strict-документов показываем первыми
+        matched_conditions.sort(key=lambda c: c["doc_id"] not in strict_docs)
+
+    # дедуп: один и тот же файл мог попасть в базу дважды (из «Обзоров» и из
+    # полного корпуса с hash-суффиксом) — оставляем более релевантный экземпляр
+    ranked, seen_titles = [], set()
+    for did in sorted(doc_score, key=lambda k: -doc_score[k]):
+        if not passes(did):
+            continue
+        base = re.sub(r"_[0-9a-f]{8}$", "", docs[did]["title"]).lower().strip()
+        if base in seen_titles:
+            continue
+        seen_titles.add(base)
+        ranked.append(did)
 
     # 5. claims из LLM-слоя: по сущностям запроса + лексический поиск по всем
     #    утверждениям (термины вне тезауруса — HiPRO, SULFATEQ, названия установок)
@@ -299,6 +326,7 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
             rows = gq(conn,
                 f"MATCH (pub:Publication)-[:STATES]->(cl:Claim)-[:{rel}]->(x:{e['type']} {{id:$id}}) "
                 f"RETURN cl.id AS id, cl.text AS text, cl.confidence AS confidence, "
+                f"cl.quote AS quote, "
                 f"cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo "
                 f"LIMIT 100", {"id": e["id"]})
             for r in rows:
@@ -306,11 +334,12 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
                     seen.add(r["id"])
                     claims.append(dict(r))
         # лексический fallback: скан всех утверждений (их сотни — дёшево)
-        qtok_all = [t for t in set(tokenize(query)) if len(t) > 2]
+        qtok_all = [t for t in set(tokenize(query)) if len(t) > 2 and t not in STOPWORDS]
         if qtok_all:
             rows = gq(conn,
                 "MATCH (pub:Publication)-[:STATES]->(cl:Claim) "
                 "RETURN cl.id AS id, cl.text AS text, cl.confidence AS confidence, "
+                "cl.quote AS quote, "
                 "cl.doc_id AS doc_id, cl.year AS year, pub.title AS title, pub.geo AS geo")
             for r in rows:
                 if r["id"] in seen or not passes(r["doc_id"]):
@@ -337,10 +366,13 @@ def search(query: str, idx: dict, conn=None, top_chunks: int = 12) -> dict:
         "parsed": parsed,
         "publications": [
             {**{k: docs[did][k] for k in ("id", "title", "year", "lang", "geo_hint", "filename")},
-             "score": round(doc_score[did], 2)} for did in ranked[:15]],
+             "score": round(doc_score[did], 2),
+             "strict_match": did in strict_docs} for did in ranked[:15]],
         "conditions": matched_conditions[:40],
         "claims": claims[:60],
         "chunks": top_chunk_texts[:top_chunks],
+        "n_constraints": len(constraint_docsets),
+        "strict_docs": sorted(strict_docs),
     }
 
 

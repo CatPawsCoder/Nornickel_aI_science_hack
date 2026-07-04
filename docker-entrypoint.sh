@@ -13,13 +13,30 @@ if [ ! -d "data/kg.kuzu" ] || [ ! -f "data/cache/bm25.pkl" ]; then
     fi
     echo "Скачиваю предсобранные данные из DATA_BUNDLE_URL ..."
     python - <<'PY'
-import os, sys, urllib.request, tarfile
+import hashlib, os, sys, urllib.request, tarfile
 url = os.environ["DATA_BUNDLE_URL"]
 print("GET", url[:100])
 fn = "/tmp/data-bundle.tar.gz"
 urllib.request.urlretrieve(url, fn)
-print("size:", os.path.getsize(fn) // 1024 // 1024, "MB, распаковка...")
+print("size:", os.path.getsize(fn) // 1024 // 1024, "MB")
+
+# контрольная сумма (если задана DATA_BUNDLE_SHA256) — защита от подмены бандла
+want = os.environ.get("DATA_BUNDLE_SHA256", "").lower()
+if want:
+    h = hashlib.sha256()
+    with open(fn, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    if h.hexdigest() != want:
+        sys.exit(f"SHA256 не совпал: {h.hexdigest()} != {want}")
+    print("SHA256 ok")
+
+# защита от path traversal: только относительные пути без '..'
 with tarfile.open(fn) as t:
+    for m in t.getmembers():
+        name = m.name.replace("\\", "/")
+        if name.startswith("/") or ".." in name.split("/"):
+            sys.exit(f"опасный путь в архиве: {m.name}")
     t.extractall(".")
 os.remove(fn)
 print("данные распакованы")

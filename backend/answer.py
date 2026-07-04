@@ -93,6 +93,16 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
         md.append(f"- География: {lbl}")
     if p["year_from"]:
         md.append(f"- Период: с {p['year_from']}{(' по ' + str(p['year_to'])) if p['year_to'] else ''} г.")
+    # строгое соответствие всем числовым условиям сразу (AND, а не OR)
+    n_constr = result.get("n_constraints", 0)
+    if n_constr >= 2:
+        strict = result.get("strict_docs", [])
+        if strict:
+            md.append(f"- ✅ Документов, удовлетворяющих **всем {n_constr} числовым условиям "
+                      f"одновременно**: {len(strict)} — они подняты в топ выдачи")
+        else:
+            md.append(f"- ⚠️ Ни один документ не покрывает все {n_constr} числовых условия "
+                      f"одновременно — ниже показаны частичные совпадения по каждому условию")
     md.append("")
 
     # --- 2. подтверждённые утверждения (Claims из графа) ---
@@ -108,9 +118,12 @@ def synthesize(result: dict, docs_meta: dict) -> dict:
         for conf in ("high", "medium", "low"):
             for c in by_conf[conf][:12]:
                 geo = GEO_LABEL.get(c.get("geo", "unknown"), "—")
+                quote = (c.get("quote") or "").strip()
+                quote_part = f" · цитата: «{quote[:90]}…»" if quote else ""
                 md.append(f"- {c['text']}  \n"
                           f"  <sub>достоверность: {CONF_BADGE[conf]} · {geo} · "
-                          f"источник: *{c['title'][:80]}* ({c['year'] or 'н/д'}) · узел `{c['id']}`</sub>")
+                          f"источник: *{c['title'][:80]}* ({c['year'] or 'н/д'}) · "
+                          f"узел `{c['id']}`{quote_part}</sub>")
         md.append("")
 
     # --- 3. числовые данные (Conditions — 100% верифицированы string-match) ---
@@ -172,9 +185,13 @@ def _find_disagreements(conds: list[dict]) -> list[dict]:
         c2 = dict(c)
         if c2.get("value2") == -1.0:
             c2["value2"] = None
-        groups.setdefault((c["param"], c["unit"].lower()), []).append(c2)
+        # группируем по (параметр, вещество, единица) — без вещества сравнение
+        # разных материалов давало ложные «разногласия»
+        groups.setdefault(
+            (c["param"], (c.get("substance") or "").lower(), c["unit"].lower()),
+            []).append(c2)
     out = []
-    for (param, unit), items in groups.items():
+    for (param, subst, unit), items in groups.items():
         docs = {i["doc_id"] for i in items}
         if len(docs) < 2:
             continue
@@ -187,7 +204,8 @@ def _find_disagreements(conds: list[dict]) -> list[dict]:
                 if a["doc_id"] != b["doc_id"] and (hi1 < lo2 or hi2 < lo1):
                     conflict = True
         if conflict:
-            out.append({"param": param, "unit": unit, "variants": items})
+            label = f"{param} ({subst})" if subst else param
+            out.append({"param": label, "unit": unit, "variants": items})
     return out
 
 

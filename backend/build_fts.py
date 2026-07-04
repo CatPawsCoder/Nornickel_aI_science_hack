@@ -44,6 +44,12 @@ def main():
         CREATE VIRTUAL TABLE chunk_fts USING fts5(stemmed, content='');
     """)
     docs = [json.loads(l) for l in open(os.path.join(CACHE, "docs.jsonl"), encoding="utf-8")]
+    # дедуп-список из build_graph_mp: индексируем те же документы, что и граф
+    keep_p = os.path.join(CACHE, "keep_docs.json")
+    if os.path.exists(keep_p):
+        keep = set(json.load(open(keep_p, encoding="utf-8")))
+        docs = [d for d in docs if d["id"] in keep]
+        print(f"docs after dedup filter: {len(docs)}")
     n = 0
     for di, d in enumerate(docs):
         try:

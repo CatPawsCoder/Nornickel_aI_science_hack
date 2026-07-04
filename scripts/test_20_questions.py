@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Прогон 20 тестовых вопросов по типам из ТЗ на живом демо."""
+"""Прогон 20 тестовых вопросов по типам из ТЗ на живом демо.
+
+Для части вопросов заданы GOLDEN-проверки: ожидаемые числа/подстроки,
+которые обязаны присутствовать в ответе (не только «что-то нашлось»).
+"""
 import json
 import sys
 import time
@@ -8,6 +12,17 @@ import urllib.request
 sys.stdout.reconfigure(encoding="utf-8")
 
 BASE = "https://catpawws-ai-science-hack.hf.space"
+
+# tag -> список подстрок, обязанных быть в markdown-ответе
+GOLDEN = {
+    "ТЗ-1 обессоливание": ["HiPRO"],
+    "число-диапазон": ["60"],            # 60-65°C
+    "число-оптимум": ["А/м2"],           # плотность тока с единицей
+    "термин HiPRO": ["98"],              # извлечение воды 98%
+    "термин SULFATEQ": ["300"],          # <300 мг/л
+    "факт-дендриты": ["240"],            # выше 240 А/м2
+    "аббревиатура": ["взвешенной плавки"],
+}
 
 QUESTIONS = [
     # --- 4 эталонных из ТЗ ---
@@ -56,9 +71,18 @@ for i, (tag, q) in enumerate(QUESTIONS, 1):
         if has_direct:
             direct = md.split("##")[1].replace("✅ Прямой ответ", "").strip().split("\n")[0][:110]
         ok = has_direct and (a["n_claims"] > 0 or a["n_conditions"] > 0 or a["n_publications"] > 0)
+        # golden-проверка: ожидаемые числа/подстроки обязаны быть в ответе
+        golden_ok = True
+        missing = []
+        for needle in GOLDEN.get(tag, []):
+            if needle not in md:
+                golden_ok = False
+                missing.append(needle)
+        ok = ok and golden_ok
         results.append((tag, dt, a["n_publications"], a["n_conditions"], a["n_claims"], has_direct, ok))
         mark = "✅" if ok else "⚠️"
-        print(f"{mark} [{i:2d}] {tag:20s} {dt:4.1f}s pubs={a['n_publications']:2d} conds={a['n_conditions']:3d} claims={a['n_claims']:2d}")
+        gold = " GOLDEN-FAIL:" + ",".join(missing) if missing else (" [golden ok]" if tag in GOLDEN else "")
+        print(f"{mark} [{i:2d}] {tag:20s} {dt:4.1f}s pubs={a['n_publications']:2d} conds={a['n_conditions']:3d} claims={a['n_claims']:2d}{gold}")
         print(f"       → {direct}")
     except Exception as e:
         results.append((tag, 0, 0, 0, 0, False, False))
